@@ -261,8 +261,7 @@ export default function ConversationPage({ params }: { params: Promise<{ id: str
         } else if (ev.type === 'summary' && typeof ev.text === 'string') {
           setStreamingSummary(ev.text);
         } else if (ev.type === 'questions') {
-          setStreamingQuestions(ev.questions || []);
-          setStreamingEmotionalCare(ev.emotional_care ?? null);
+          setStreamingQuestions(ev.questions ?? []);
         } else if (ev.type === 'integration') {
           if (ev.updated_doc) {
             setStreamingDoc(ev.updated_doc as DocView);
@@ -608,17 +607,11 @@ export default function ConversationPage({ params }: { params: Promise<{ id: str
           )}
 
           {streamingQuestions.length > 0 && (
-            <QuestionsCard
-              questions={streamingQuestions}
-              emotional_care={streamingEmotionalCare}
-            />
+            <QuestionsCard questions={streamingQuestions} />
           )}
 
           {streamingQuestions.length === 0 && latestQuestions.length > 0 && conv.state !== 'confirming' && !streaming && (
-            <QuestionsCard
-              questions={latestQuestions}
-              emotional_care={(lastAssistant?.meta as { emotional_care?: string | null } | undefined)?.emotional_care ?? null}
-            />
+            <QuestionsCard questions={latestQuestions} />
           )}
 
           {pending && streamSubState === 'idle' && (

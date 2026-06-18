@@ -310,47 +310,21 @@ class LLMClient:
         questions = [
             {
                 "id": "q1",
-                "dimension": "问题类型",
-                "question": "你说的这个问题，主要是流程问题、数据问题、还是系统问题？",
-                "why": "不同类型的问题解决方案不一样",
-                "examples": ["流程问题", "数据问题", "系统问题", "人的问题"],
+                "my_understanding": "客户先发现错——说明内部没监测到，只能等客户来报。",
+                "question": "如果你是那个客户，第一次发现货对不上会怎么办？",
+                "why_matters": "客户的反应路径决定系统入口该放在哪。",
             },
             {
                 "id": "q2",
-                "dimension": "责任方",
-                "question": "现在是谁在处理这个事？处理到什么程度算完？",
-                "why": "了解现状才能设计未来方案",
-                "examples": ["客服", "仓库", "经理", "没有明确流程"],
-            },
-            {
-                "id": "q3",
-                "dimension": "关键场景",
-                "question": "能举个最典型的例子吗？最近一次发生是什么时候？",
-                "why": "用真实案例验证推测",
-                "examples": ["上周", "上个月", "具体客户案例", "不太记得"],
-            },
-            {
-                "id": "q4",
-                "dimension": "期望效果",
-                "question": "你希望解决到什么程度？以后都不出错，还是出错了能快速处理？",
-                "why": "区分预防型需求和补救型需求",
-                "examples": ["以后都不出错", "快速处理", "都要"],
-            },
-            {
-                "id": "q5",
-                "dimension": "边界情况",
-                "question": "这种情况大概多久发生一次？",
-                "why": "评估需求优先级",
-                "examples": ["每天", "每周", "每月", "偶尔"],
+                "my_understanding": "这事不知道是天天发生还是偶尔大促爆雷。",
+                "question": "这错误是日常偶发还是大促集中爆？",
+                "why_matters": "不同爆发模式对应两套完全不同的架构。",
             },
         ]
         result: dict[str, Any] = {
             "questions": questions,
             "should_continue": False,
-            "reason_to_continue": "已覆盖 5 个必选维度，等待业务人员回答",
         }
-        if emotional_signal in ("焦虑", "愤怒"):
-            result["emotional_care"] = "听起来这事挺头疼的，咱们一起捋一捋，肯定能解决。"
         return json.dumps(result, ensure_ascii=False)
 
     def _mock_info_integration(self, context: dict) -> str:

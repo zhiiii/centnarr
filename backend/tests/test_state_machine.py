@@ -124,7 +124,7 @@ def test_async_supplement_from_answering():
 def test_calc_completion():
     assert calc_completion({}) == 0
 
-    doc = {
+    doc_partial = {
         "scene": "仓库发货数量对不上",
         "background": "每月 3-5 次出错",
         "roles": [{"name": "仓库"}],
@@ -132,8 +132,35 @@ def test_calc_completion():
         "expected_outcomes": [{"description": "快速处理"}],
         "key_scenarios": [{"description": "100 台只收到 80 台"}],
     }
-    completion = calc_completion(doc)
-    assert completion >= 80
+    partial_score = calc_completion(doc_partial)
+    assert 50 <= partial_score <= 60, f"expected 50-60 for 1 entry per list, got {partial_score}"
+
+    doc_full = {
+        "scene": "仓库发货数量对不上",
+        "background": "每月 3-5 次出错",
+        "roles": [{"name": "仓库"}, {"name": "客服"}, {"name": "经理"}],
+        "pain_points": [
+            {"description": "客户收货对不上"},
+            {"description": "客服被动响应"},
+            {"description": "无监控"},
+        ],
+        "expected_outcomes": [
+            {"description": "内部先于客户发现"},
+            {"description": "差异自动核对"},
+            {"description": "24 小时内补发"},
+        ],
+        "key_scenarios": [
+            {"description": "100 台只收到 80 台"},
+            {"description": "型号发错"},
+            {"description": "客户拒收"},
+        ],
+    }
+    full_score = calc_completion(doc_full)
+    assert full_score == 100, f"expected 100 for fully filled, got {full_score}"
+
+    doc_with_to_confirm = {**doc_full, "to_confirm": ["scene"]}
+    score_excluded = calc_completion(doc_with_to_confirm)
+    assert score_excluded == 80, f"expected 80 (scene excluded), got {score_excluded}"
 
 
 def test_should_continue():
@@ -141,10 +168,10 @@ def test_should_continue():
     doc = {
         "scene": "x",
         "background": "x",
-        "roles": [{"name": "x"}],
-        "pain_points": [{"description": "x"}],
-        "expected_outcomes": [{"description": "x"}],
-        "key_scenarios": [{"description": "x"}],
+        "roles": [{"name": "x"}, {"name": "y"}, {"name": "z"}],
+        "pain_points": [{"description": "x"}, {"description": "y"}, {"description": "z"}],
+        "expected_outcomes": [{"description": "x"}, {"description": "y"}, {"description": "z"}],
+        "key_scenarios": [{"description": "x"}, {"description": "y"}, {"description": "z"}],
         "to_confirm": [],
     }
     assert should_continue(doc) is False

@@ -401,39 +401,66 @@ function Empty({ children }: { children: React.ReactNode }) {
 }
 
 function CompletionDots({ doc, completion }: { doc: DocView; completion: number }) {
-  const fields: Array<{ key: keyof DocView | string; label: string; filled: boolean; weight: number }> = [
-    { key: 'scene', label: '场景', filled: !!doc.scene?.trim(), weight: 20 },
-    { key: 'background', label: '背景', filled: !!doc.background?.trim(), weight: 15 },
-    { key: 'roles', label: '角色', filled: doc.roles?.some((r) => r.name?.trim()) ?? false, weight: 15 },
-    { key: 'pain_points', label: '痛点', filled: doc.pain_points?.some((p) => p.description?.trim()) ?? false, weight: 15 },
-    { key: 'expected_outcomes', label: '期望', filled: doc.expected_outcomes?.some((e) => e.description?.trim()) ?? false, weight: 20 },
-    { key: 'key_scenarios', label: '场景示例', filled: doc.key_scenarios?.some((s) => s.description?.trim()) ?? false, weight: 15 },
+  const fields: Array<{ key: string; label: string; state: 'empty' | 'partial' | 'full'; weight: number; count?: number }> = [
+    (() => {
+      const filled = !!doc.scene?.trim();
+      return { key: 'scene', label: '场景', state: filled ? 'full' : 'empty', weight: 20 };
+    })(),
+    (() => {
+      const filled = !!doc.background?.trim();
+      return { key: 'background', label: '背景', state: filled ? 'full' : 'empty', weight: 15 };
+    })(),
+    (() => {
+      const count = doc.roles?.filter((r) => r.name?.trim()).length ?? 0;
+      const state = count >= 3 ? 'full' : count >= 1 ? 'partial' : 'empty';
+      return { key: 'roles', label: '角色', state, weight: 15, count };
+    })(),
+    (() => {
+      const count = doc.pain_points?.filter((p) => p.description?.trim()).length ?? 0;
+      const state = count >= 3 ? 'full' : count >= 1 ? 'partial' : 'empty';
+      return { key: 'pain_points', label: '痛点', state, weight: 15, count };
+    })(),
+    (() => {
+      const count = doc.expected_outcomes?.filter((e) => e.description?.trim()).length ?? 0;
+      const state = count >= 3 ? 'full' : count >= 1 ? 'partial' : 'empty';
+      return { key: 'expected_outcomes', label: '期望', state, weight: 20, count };
+    })(),
+    (() => {
+      const count = doc.key_scenarios?.filter((s) => s.description?.trim()).length ?? 0;
+      const state = count >= 3 ? 'full' : count >= 1 ? 'partial' : 'empty';
+      return { key: 'key_scenarios', label: '场景示例', state, weight: 15, count };
+    })(),
   ];
-  const filledCount = fields.filter((f) => f.filled).length;
+  const fullCount = fields.filter((f) => f.state === 'full').length;
+  const partialCount = fields.filter((f) => f.state === 'partial').length;
   const totalCount = fields.length;
-  const weighted = fields.reduce((sum, f) => sum + (f.filled ? f.weight : 0), 0);
-  const allFilled = filledCount === totalCount;
+  const allFull = fullCount === totalCount;
   return (
-    <div className="flex flex-col items-end gap-1.5" title={`完成度基于 6 个字段加权: ${weighted}/100`}>
+    <div className="flex flex-col items-end gap-1.5" title={`完成度基于 6 个字段加权: ${completion}/100`}>
       <div className="flex items-center gap-1.5">
-        {fields.map((f) => (
-          <span
-            key={String(f.key)}
-            title={`${f.label}${f.filled ? ' ✓' : ' (待补)'}`}
-            style={{
-              width: 7,
-              height: 7,
-              borderRadius: 999,
-              background: f.filled ? 'var(--gold)' : 'transparent',
-              border: f.filled ? '1px solid var(--gold)' : '1px solid var(--border-strong)',
-              transition: 'all 220ms ease-out',
-              boxShadow: f.filled ? '0 0 6px var(--gold-glow)' : 'none',
-            }}
-          />
-        ))}
+        {fields.map((f) => {
+          const isFull = f.state === 'full';
+          const isPartial = f.state === 'partial';
+          return (
+            <span
+              key={f.key}
+              title={`${f.label}${isFull ? ' ✓' : isPartial ? `（${f.count ?? 0}/3，已部分填写）` : ' (待补)'}`}
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: 999,
+                background: isFull ? 'var(--gold)' : isPartial ? 'var(--gold)' : 'transparent',
+                border: isFull || isPartial ? '1px solid var(--gold)' : '1px solid var(--border-strong)',
+                opacity: isFull ? 1 : isPartial ? 0.45 : 1,
+                transition: 'all 220ms ease-out',
+                boxShadow: isFull ? '0 0 6px var(--gold-glow)' : 'none',
+              }}
+            />
+          );
+        })}
       </div>
-      <div className="text-[10.5px] tracking-wide" style={{ color: allFilled ? 'var(--gold)' : 'var(--text-muted)' }}>
-        完成度 {filledCount}/{totalCount}
+      <div className="text-[10.5px] tracking-wide" style={{ color: allFull ? 'var(--gold)' : 'var(--text-muted)' }}>
+        完成度 {completion}/100
       </div>
     </div>
   );
@@ -619,11 +646,13 @@ function EditableField({
       className={
         compact
           ? 'group inline-flex items-center gap-1 align-middle'
-          : 'group inline-flex items-start gap-1.5 align-baseline w-full'
+          : multiline
+          ? 'group block'
+          : 'group inline'
       }
     >
       <span
-        className={compact ? `tag ${toneClass}` : multiline ? 'whitespace-pre-wrap flex-1' : 'flex-1'}
+        className={compact ? `tag ${toneClass}` : multiline ? 'whitespace-pre-wrap' : ''}
         style={{
           color: displayEmpty ? 'var(--text-muted)' : 'var(--text-primary)',
           fontStyle: displayEmpty ? 'italic' : 'normal',
@@ -634,12 +663,13 @@ function EditableField({
       <button
         type="button"
         onClick={startEdit}
-        className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-[12px] flex-shrink-0 leading-none"
+        className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-[12px] leading-none align-baseline"
         style={{
           color: 'var(--text-muted)',
           background: 'transparent',
           border: 'none',
           padding: 0,
+          marginLeft: compact ? 0 : 4,
           cursor: 'pointer',
         }}
         title="编辑（失焦或 ⌘+Enter 保存，Esc 取消）"

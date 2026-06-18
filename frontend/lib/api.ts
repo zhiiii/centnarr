@@ -24,12 +24,11 @@ export interface StreamEvent {
   state?: string;
   message?: string;
   questions?: QuestionItem[];
-  emotional_care?: string | null;
-  delta?: { added?: unknown[]; modified?: unknown[]; confirmed?: unknown[]; product_perspective?: string };
+  delta?: { added?: unknown[]; modified?: unknown[]; confirmed?: unknown[] };
   updated_doc?: DocView;
   completion_percentage?: number;
   user_facing_summary?: string;
-  product_manager_inference?: string;
+  inference?: string;
   scene_analysis?: SceneAnalysis;
   [key: string]: unknown;
 }
@@ -93,13 +92,9 @@ export async function* streamConversation(
 
 export interface QuestionItem {
   id: string;
-  dimension: string;
   question?: string;
-  why?: string;
-  examples?: string[];
+  why_matters?: string;
   my_understanding?: string | null;
-  confirm_with_businessperson?: string | null;
-  guide_to_say_more?: string | null;
 }
 
 export interface SceneAnalysis {
@@ -114,9 +109,7 @@ export interface SceneAnalysis {
 
 export interface QuestionGeneration {
   questions: QuestionItem[];
-  emotional_care?: string | null;
   should_continue?: boolean;
-  reason_to_continue?: string | null;
 }
 
 export interface DocView {
@@ -205,7 +198,6 @@ export interface RespondResponse {
   delta: { added?: unknown[]; modified?: unknown[]; confirmed?: unknown[] };
   user_facing_summary: string;
   questions: QuestionItem[];
-  emotional_care: string | null;
   doc: DocView;
   should_continue: boolean;
 }

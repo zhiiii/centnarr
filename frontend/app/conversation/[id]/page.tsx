@@ -681,153 +681,167 @@ export default function ConversationPage({ params }: { params: Promise<{ id: str
               )}
 
               <div
-                className="composer-shell flex items-end gap-2"
+                className="composer-shell flex flex-col gap-2"
                 style={{
                   background: 'var(--bg-surface-1)',
                   border: '1px solid var(--border-hairline)',
                   borderRadius: 10,
-                  padding: 7,
+                  padding: '10px 10px 6px',
                   transition: 'border-color 150ms ease-out',
                 }}
               >
-                <div className="flex flex-col gap-1 shrink-0">
-                  <button
-                    onClick={toggleVoice}
-                    disabled={!voiceSupported}
-                    title={voiceSupported ? (recording ? '点击停止录音' : '点击开始语音输入') : '当前浏览器不支持语音'}
-                    className={`composer-icon-btn ${recording ? 'is-recording' : ''}`}
-                  >
-                    {recording ? (
-                      <span className="voice-dot" />
-                    ) : (
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                        <rect x="9" y="3" width="6" height="12" rx="3" />
-                        <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
-                      </svg>
-                    )}
-                  </button>
-                  <button
-                    onClick={onPickFile}
-                    disabled={uploading}
-                    className="composer-icon-btn"
-                    title="上传图片"
-                  >
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="3" y="3" width="18" height="18" rx="2" />
-                      <circle cx="9" cy="9" r="2" />
-                      <path d="M21 15l-5-5L5 21" />
-                    </svg>
-                  </button>
-                  <input
-                    ref={fileRef}
-                    type="file"
-                    accept="image/png,image/jpeg,image/gif"
-                    className="hidden"
-                    onChange={onFileChange}
-                  />
-                </div>
+                <textarea
+                  ref={taRef}
+                  value={input}
+                  onChange={(e) => {
+                    setInput(e.target.value);
+                    if (inputType === 'file' && !isChatLog(e.target.value)) {
+                      setInputType('text');
+                    }
+                  }}
+                  onKeyDown={onKey}
+                  placeholder="用大白话继续说，或者回答问题…  · 也可直接粘贴图片/聊天记录"
+                  rows={3}
+                  disabled={pending || conv.state === 'idle'}
+                  className="composer-textarea"
+                  style={{
+                    width: '100%',
+                    background: 'transparent',
+                    border: 'none',
+                    outline: 'none',
+                    resize: 'none',
+                    color: 'var(--text-primary)',
+                    fontSize: 13,
+                    lineHeight: 1.55,
+                    padding: '2px 2px',
+                    minHeight: 56,
+                  }}
+                />
 
-                <div className="flex-1 min-w-0">
-                  <textarea
-                    ref={taRef}
-                    value={input}
-                    onChange={(e) => {
-                      setInput(e.target.value);
-                      if (inputType === 'file' && !isChatLog(e.target.value)) {
-                        setInputType('text');
-                      }
-                    }}
-                    onKeyDown={onKey}
-                    placeholder="用大白话继续说，或者回答问题…  · 也可直接粘贴图片/聊天记录"
-                    rows={2}
-                    disabled={pending || conv.state === 'idle'}
-                    className="composer-textarea"
-                    style={{
-                      width: '100%',
-                      background: 'transparent',
-                      border: 'none',
-                      outline: 'none',
-                      resize: 'none',
-                      color: 'var(--text-primary)',
-                      fontSize: 13,
-                      lineHeight: 1.55,
-                      padding: '4px 4px',
-                      minHeight: 44,
-                    }}
-                  />
-                  <div
-                    className="flex items-center gap-2.5 text-[10px] px-1"
-                    style={{ color: 'var(--text-muted)', minHeight: 16 }}
-                  >
-                    {uploading && <span>上传中…</span>}
-                    {recording && (
-                      <span className="voice-pulse" style={{ color: 'var(--destructive)' }}>
-                        ● 录音中
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-0.5 shrink-0">
+                    <button
+                      onClick={onPickFile}
+                      disabled={uploading}
+                      className="composer-icon-btn"
+                      title="上传图片"
+                    >
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="3" y="3" width="18" height="18" rx="2" />
+                        <circle cx="9" cy="9" r="2" />
+                        <path d="M21 15l-5-5L5 21" />
+                      </svg>
+                    </button>
+                    <input
+                      ref={fileRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/gif"
+                      className="hidden"
+                      onChange={onFileChange}
+                    />
+                    {pendingImages.length > 0 && (
+                      <span
+                        className="text-[10px] ml-1"
+                        style={{ color: 'var(--text-muted)' }}
+                        title="待发送图片"
+                      >
+                        {pendingImages.length} 张图
                       </span>
                     )}
-                    {pendingImages.length > 0 && <span>{pendingImages.length} 张图片待发送</span>}
-                    {inputType === 'file' && <span className="tag tag-accent">识别为聊天记录 (file)</span>}
-                    <span style={{ marginLeft: 'auto', opacity: 0.65 }}>
-                      <kbd
-                        style={{
-                          fontSize: 9,
-                          padding: '1px 4px',
-                          borderRadius: 3,
-                          background: 'var(--bg-surface-2)',
-                          border: '1px solid var(--border-hairline)',
-                          fontFamily: 'inherit',
-                        }}
-                      >
-                        ⌘ + ⏎
-                      </kbd>{' '}
-                      发送
-                    </span>
+                    {uploading && (
+                      <span className="text-[10px] ml-1" style={{ color: 'var(--text-muted)' }}>
+                        上传中…
+                      </span>
+                    )}
+                    <div
+                      style={{
+                        width: 1,
+                        height: 16,
+                        background: 'var(--border-hairline)',
+                        margin: '0 8px',
+                      }}
+                      aria-hidden
+                    />
+                    <button
+                      type="button"
+                      onClick={onFinish}
+                      disabled={finishing || pending || conv.state === 'confirming'}
+                      title={conv.state === 'confirming' ? '已结束对话' : '点击结束对话，进入签收'}
+                      className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] transition-colors"
+                      style={{
+                        color: 'var(--text-secondary)',
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        opacity: 1,
+                      }}
+                    >
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+                      </svg>
+                      {conv.state === 'confirming'
+                        ? '已聊完'
+                        : finishing
+                        ? '处理中…'
+                        : '我聊够了'}
+                    </button>
                   </div>
-                </div>
 
-                <div className="flex flex-col items-end gap-1 shrink-0">
-                  <div className="flex flex-row gap-1 items-center">
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={toggleVoice}
+                      disabled={!voiceSupported}
+                      title={voiceSupported ? (recording ? '点击停止录音' : '点击开始语音输入') : '当前浏览器不支持语音'}
+                      className={`composer-icon-btn ${recording ? 'is-recording' : ''}`}
+                    >
+                      {recording ? (
+                        <span className="voice-dot" />
+                      ) : (
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="9" y="3" width="6" height="12" rx="3" />
+                          <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+                        </svg>
+                      )}
+                    </button>
                     <button
                       onClick={onSubmit}
                       disabled={pending || (!input.trim() && pendingImages.length === 0) || conv.state === 'idle'}
                       title={pending ? '处理中' : '发送 (⌘+⏎)'}
                       aria-label="发送"
-                      className="btn btn-primary"
                       style={{
+                        width: 28,
+                        height: 28,
                         padding: 0,
-                        width: 26,
-                        height: 26,
-                        borderRadius: 6,
+                        borderRadius: 7,
+                        background: pending
+                          ? 'var(--bg-surface-3)'
+                          : 'rgba(94, 106, 210, 0.18)',
+                        border: '1px solid rgba(94, 106, 210, 0.28)',
+                        color: pending ? 'var(--text-muted)' : 'var(--accent)',
+                        display: 'inline-flex',
+                        alignItems: 'center',
                         justifyContent: 'center',
+                        cursor: pending ? 'wait' : 'pointer',
+                        transition: 'all 150ms ease-out',
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!pending) {
+                          (e.currentTarget as HTMLButtonElement).style.background = 'rgba(94, 106, 210, 0.28)';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!pending) {
+                          (e.currentTarget as HTMLButtonElement).style.background = 'rgba(94, 106, 210, 0.18)';
+                        }
                       }}
                     >
                       {pending ? (
                         <span className="voice-dot" style={{ background: 'currentColor' }} />
                       ) : (
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M5 12h14M13 5l7 7-7 7" />
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 19V5M5 12l7-7 7 7" />
                         </svg>
                       )}
-                    </button>
-                    <button
-                      onClick={onFinish}
-                      disabled={finishing || pending || conv.state === 'confirming'}
-                      title={conv.state === 'confirming' ? '已结束对话' : '点击结束对话，进入签收'}
-                      className="btn btn-ghost"
-                      style={{
-                        padding: '4px 9px',
-                        fontSize: 10.5,
-                        borderRadius: 5,
-                        whiteSpace: 'nowrap',
-                        minHeight: 26,
-                        lineHeight: 1.2,
-                      }}
-                    >
-                      {conv.state === 'confirming'
-                        ? '已聊完 ✓'
-                        : finishing
-                        ? '处理中…'
-                        : '我聊够了'}
                     </button>
                   </div>
                 </div>

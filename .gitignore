@@ -1,0 +1,26 @@
+# macOS
+.DS_Store
+
+# Local tool data
+.codegraph/
+
+# Temp scripts
+.tmp_*.sh
+
+# IDE state (kept out so each dev's local state doesn't pollute the repo)
+.vscode/
+.idea/
+
+# Python (root-level caches if any)
+__pycache__/
+*.py[cod]
+.mypy_cache/
+
+# Node (root-level)
+node_modules/
+
+# TypeScript build cache
+*.tsbuildinfo
+
+# Next.js typegen output
+.next/types/

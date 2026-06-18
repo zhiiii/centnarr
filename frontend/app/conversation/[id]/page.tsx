@@ -785,52 +785,51 @@ export default function ConversationPage({ params }: { params: Promise<{ id: str
                   </div>
                 </div>
 
-                <div className="flex flex-col gap-1 shrink-0">
-                  <button
-                    onClick={onSubmit}
-                    disabled={pending || (!input.trim() && pendingImages.length === 0) || conv.state === 'idle'}
-                    className="btn btn-primary"
-                    style={{
-                      padding: '7px 12px',
-                      fontSize: 12,
-                      fontWeight: 500,
-                      borderRadius: 6,
-                      minHeight: 30,
-                    }}
-                  >
-                    {pending ? (
-                      <>
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  <div className="flex flex-row gap-1 items-center">
+                    <button
+                      onClick={onSubmit}
+                      disabled={pending || (!input.trim() && pendingImages.length === 0) || conv.state === 'idle'}
+                      title={pending ? '处理中' : '发送 (⌘+⏎)'}
+                      aria-label="发送"
+                      className="btn btn-primary"
+                      style={{
+                        padding: 0,
+                        width: 26,
+                        height: 26,
+                        borderRadius: 6,
+                        justifyContent: 'center',
+                      }}
+                    >
+                      {pending ? (
                         <span className="voice-dot" style={{ background: 'currentColor' }} />
-                        处理中
-                      </>
-                    ) : (
-                      <>
-                        发送
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      ) : (
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M5 12h14M13 5l7 7-7 7" />
                         </svg>
-                      </>
-                    )}
-                  </button>
-                  <button
-                    onClick={onFinish}
-                    disabled={finishing || pending || conv.state === 'confirming'}
-                    title={conv.state === 'confirming' ? '已结束对话' : '点击结束对话，进入签收'}
-                    className="btn btn-ghost"
-                    style={{
-                      padding: '5px 10px',
-                      fontSize: 11,
-                      borderRadius: 5,
-                      whiteSpace: 'nowrap',
-                      minHeight: 24,
-                    }}
-                  >
-                    {conv.state === 'confirming'
-                      ? '已聊完 ✓'
-                      : finishing
-                      ? '处理中…'
-                      : '我聊够了'}
-                  </button>
+                      )}
+                    </button>
+                    <button
+                      onClick={onFinish}
+                      disabled={finishing || pending || conv.state === 'confirming'}
+                      title={conv.state === 'confirming' ? '已结束对话' : '点击结束对话，进入签收'}
+                      className="btn btn-ghost"
+                      style={{
+                        padding: '4px 9px',
+                        fontSize: 10.5,
+                        borderRadius: 5,
+                        whiteSpace: 'nowrap',
+                        minHeight: 26,
+                        lineHeight: 1.2,
+                      }}
+                    >
+                      {conv.state === 'confirming'
+                        ? '已聊完 ✓'
+                        : finishing
+                        ? '处理中…'
+                        : '我聊够了'}
+                    </button>
+                  </div>
                 </div>
               </div>
             </>

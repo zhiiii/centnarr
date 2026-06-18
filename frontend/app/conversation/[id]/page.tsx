@@ -8,6 +8,7 @@ import { DocPanel } from '@/components/DocPanel';
 import { CommunicationTimeline } from '@/components/CommunicationTimeline';
 import { PrdViewer } from '@/components/PrdViewer';
 import { QuestionsCard } from '@/components/QuestionsCard';
+import { sanitizeAiText } from '@/lib/ai_text';
 import { useVoiceInput } from '@/hooks/useVoiceInput';
 
 const STREAM_TIMEOUT_MS = 90_000;
@@ -598,11 +599,11 @@ export default function ConversationPage({ params }: { params: Promise<{ id: str
 
           {streaming && (
             <StreamingBubble
-              content={streaming.content}
+              content={sanitizeAiText(streaming.content)}
               error={streaming.error}
               onRetry={retryLast}
               subState={streamSubState}
-              summary={streamingSummary}
+              summary={sanitizeAiText(streamingSummary)}
             />
           )}
 
@@ -964,7 +965,7 @@ function MessageBubble({
             className="max-w-[200px] rounded mb-1.5"
           />
         ) : null}
-        {message.content}
+        {isUser ? message.content : sanitizeAiText(message.content)}
         {message.input_type && message.input_type !== 'text' && (
           <div className="mt-1">
             <span className="tag">{message.input_type}</span>

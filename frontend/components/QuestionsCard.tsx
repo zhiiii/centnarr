@@ -2,9 +2,14 @@
 
 export interface QuestionItemV2 {
   id: string;
+  dimension?: string;
   question?: string;
+  why?: string;
   why_matters?: string;
+  examples?: string[];
   my_understanding?: string | null;
+  confirm_with_businessperson?: string | null;
+  guide_to_say_more?: string | null;
 }
 
 interface Props {
@@ -17,38 +22,126 @@ export function QuestionsCard({ questions }: Props) {
   }
 
   return (
-    <div className="space-y-2 mt-2">
+    <div className="space-y-2.5 mt-2">
+      <div
+        className="text-[11px] uppercase tracking-wider mb-1"
+        style={{ color: 'var(--text-muted)', fontWeight: 600 }}
+      >
+        AI 反问 · {questions.length} 个问题
+      </div>
+
       {questions.map((q, idx) => {
+        const dimension = q.dimension || '';
         const myUnderstanding = q.my_understanding || '';
-        const question = q.question || '';
-        const whyMatters = q.why_matters || '';
+        const confirmQ =
+          q.confirm_with_businessperson || q.question || '';
+        const guideMore = q.guide_to_say_more || '';
+        const why = q.why_matters || q.why || '';
+
+        const hasAny =
+          myUnderstanding || confirmQ || guideMore || q.question;
 
         return (
           <div
             key={q.id || idx}
-            className="flex gap-2 items-start text-[13.5px] leading-[1.6]"
-            style={{ color: 'var(--text-primary)' }}
+            className="rounded-lg p-3.5"
+            style={{
+              background: 'var(--bg-surface-1)',
+              border: '1px solid var(--border-hairline)',
+            }}
           >
-            <span
-              className="font-mono text-[11px] mt-1 flex-shrink-0 select-none"
-              style={{ color: 'var(--gold)' }}
-            >
-              {idx + 1}.
-            </span>
-            <div className="flex-1 min-w-0">
-              {myUnderstanding && (
-                <div style={{ color: 'var(--text-secondary)' }}>{myUnderstanding}</div>
-              )}
-              {question && <div>{question}</div>}
-              {whyMatters && (
-                <div
-                  className="mt-1 text-[11.5px]"
-                  style={{ color: 'var(--text-muted)' }}
-                >
-                  ——{whyMatters}
-                </div>
+            <div className="flex items-center gap-2 mb-2">
+              <span
+                className="font-mono text-[10px] px-1.5 py-0.5 rounded flex-shrink-0"
+                style={{ background: 'var(--bg-surface-3)', color: 'var(--text-secondary)' }}
+              >
+                #{idx + 1}
+              </span>
+              {dimension && (
+                <span className="tag tag-accent flex-shrink-0">{dimension}</span>
               )}
             </div>
+
+            {myUnderstanding && (
+              <div className="mb-2">
+                <div
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10.5px] font-medium mb-1"
+                  style={{
+                    background: 'rgba(94,106,210,0.15)',
+                    color: 'var(--accent)',
+                  }}
+                >
+                  我的理解
+                </div>
+                <div
+                  className="text-[13px] leading-[1.6]"
+                  style={{ color: 'var(--text-primary)' }}
+                >
+                  {myUnderstanding}
+                </div>
+              </div>
+            )}
+
+            {confirmQ && (
+              <div className="mb-2">
+                <div
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10.5px] font-medium mb-1"
+                  style={{
+                    background: 'rgba(242,201,76,0.15)',
+                    color: 'var(--warning)',
+                  }}
+                >
+                  想跟你确认
+                </div>
+                <div
+                  className="text-[13px] leading-[1.6]"
+                  style={{ color: 'var(--text-primary)' }}
+                >
+                  {confirmQ}
+                </div>
+              </div>
+            )}
+
+            {guideMore && (
+              <div>
+                <div
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10.5px] font-medium mb-1"
+                  style={{
+                    background: 'rgba(76,183,130,0.15)',
+                    color: 'var(--success)',
+                  }}
+                >
+                  再多说点
+                </div>
+                <div
+                  className="text-[12.5px] leading-[1.6]"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
+                  {guideMore}
+                </div>
+              </div>
+            )}
+
+            {!hasAny && (
+              <div
+                className="text-[13px] leading-[1.6]"
+                style={{ color: 'var(--text-muted)' }}
+              >
+                （问题内容为空）
+              </div>
+            )}
+
+            {why && (
+              <div
+                className="mt-2 pt-2 text-[11px] italic"
+                style={{
+                  borderTop: '1px dashed var(--border-hairline)',
+                  color: 'var(--text-muted)',
+                }}
+              >
+                why: {why}
+              </div>
+            )}
           </div>
         );
       })}

@@ -881,7 +881,7 @@ export default function ConversationPage({ params }: { params: Promise<{ id: str
       {/* RIGHT: Document + Timeline */}
       <div className="flex-1 overflow-y-auto">
         {prd ? (
-          <PrdViewer prd={prd} onClose={() => setPrd(null)} />
+          <PrdViewer prd={prd} />
         ) : (
           <>
             <DocPanel

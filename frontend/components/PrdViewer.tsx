@@ -6,11 +6,10 @@ import { useShortcuts } from '@/hooks/useShortcuts';
 
 interface Props {
   prd: { prd_id: string; title: string; content: string; version?: string; acceptance_state?: Record<string, boolean> };
-  onClose: () => void;
   onUpdated?: (next: { content: string; version: string; acceptance_state: Record<string, boolean> }) => void;
 }
 
-export function PrdViewer({ prd, onClose, onUpdated }: Props) {
+export function PrdViewer({ prd, onUpdated }: Props) {
   const [copied, setCopied] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -138,41 +137,37 @@ export function PrdViewer({ prd, onClose, onUpdated }: Props) {
 
   return (
     <div className="p-6 relative">
-      <div className="flex items-center justify-between mb-5">
-        <div>
-          <div className="text-[11px] uppercase tracking-wider mb-1" style={{ color: 'var(--success)' }}>
-            PRD {version}
-          </div>
-          <div className="font-display text-[20px] font-semibold tracking-tight">{prd.title}</div>
+      <div className="mb-4">
+        <div className="text-[11px] uppercase tracking-wider mb-1" style={{ color: 'var(--success)' }}>
+          PRD {version}
         </div>
-        <div className="flex items-center gap-2">
-          {!editing && (
-            <>
-              <button onClick={copy} className="btn btn-ghost">
-                {copied ? '已复制' : '复制 Markdown'}
-              </button>
-              <button onClick={download} disabled={downloading} className="btn btn-ghost">
-                {downloading ? '下载中…' : '导出 .md'}
-              </button>
-              <button onClick={startEdit} className="btn btn-ghost" title="编辑 PRD（Esc 取消）">
-                ✏️ 编辑
-              </button>
-              <button onClick={onClose} className="btn btn-ghost">
-                返回文档
-              </button>
-            </>
-          )}
-          {editing && (
-            <>
-              <button onClick={cancelEdit} disabled={saving} className="btn btn-ghost">
-                取消
-              </button>
-              <button onClick={saveEdit} disabled={saving} className="btn btn-primary">
-                {saving ? '保存中…' : '保存'}
-              </button>
-            </>
-          )}
-        </div>
+        <div className="font-display text-[20px] font-semibold tracking-tight">{prd.title}</div>
+      </div>
+
+      <div className="flex items-center gap-2 mb-5 pb-4" style={{ borderBottom: '1px solid var(--border-hairline)' }}>
+        {!editing && (
+          <>
+            <button onClick={copy} className="btn btn-ghost">
+              {copied ? '已复制' : '复制 Markdown'}
+            </button>
+            <button onClick={download} disabled={downloading} className="btn btn-ghost">
+              {downloading ? '下载中…' : '导出 .md'}
+            </button>
+            <button onClick={startEdit} className="btn btn-ghost" title="编辑 PRD（Esc 取消）">
+              ✏️ 编辑
+            </button>
+          </>
+        )}
+        {editing && (
+          <>
+            <button onClick={cancelEdit} disabled={saving} className="btn btn-ghost">
+              取消
+            </button>
+            <button onClick={saveEdit} disabled={saving} className="btn btn-primary">
+              {saving ? '保存中…' : '保存'}
+            </button>
+          </>
+        )}
       </div>
 
       <div className="surface p-6">

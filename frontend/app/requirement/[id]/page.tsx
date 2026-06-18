@@ -156,8 +156,28 @@ export default function RequirementPage({ params }: { params: Promise<{ id: stri
             <button onClick={toggleArchive} className="btn btn-ghost">
               {isArchived ? '取消归档' : '归档'}
             </button>
-            <Link href={`/conversation/${data.conversation_id}`} className="btn btn-primary">
-              回到聊天 →
+            <Link
+              href={`/conversation/${data.conversation_id}`}
+              title="回到聊天"
+              aria-label="回到聊天"
+              style={{
+                width: 30,
+                height: 30,
+                padding: 0,
+                borderRadius: 6,
+                background: 'rgba(94, 106, 210, 0.18)',
+                border: '1px solid rgba(94, 106, 210, 0.28)',
+                color: 'var(--accent)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                textDecoration: 'none',
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M19 12H5M12 19l-7-7 7-7" />
+              </svg>
             </Link>
             <Link href={backHref} className="btn btn-ghost">
               {backLabel}
@@ -179,7 +199,6 @@ export default function RequirementPage({ params }: { params: Promise<{ id: stri
                 version: prd.version,
                 acceptance_state: prd.acceptance_state,
               }}
-              onClose={() => router.push(backHref)}
               onUpdated={refresh}
             />
           </div>
@@ -203,13 +222,6 @@ export default function RequirementPage({ params }: { params: Promise<{ id: stri
           <Corner pos="br" />
           <div className="flex items-center justify-between mb-3">
             <div className="text-[14px] font-medium">完整沟通记录</div>
-            <Link
-              href={`/conversation/${data.conversation_id}`}
-              className="text-[12px]"
-              style={{ color: 'var(--accent)' }}
-            >
-              回到聊天界面 →
-            </Link>
           </div>
           {messages.length === 0 ? (
             <div className="text-[12px] py-6 text-center" style={{ color: 'var(--text-muted)' }}>

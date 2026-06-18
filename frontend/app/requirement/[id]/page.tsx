@@ -136,53 +136,55 @@ export default function RequirementPage({ params }: { params: Promise<{ id: stri
   return (
     <div className="min-h-[calc(100vh-48px)] px-6 py-10">
       <div className="max-w-5xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <div className="text-[11px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-muted)' }}>
-              需求详情 {isArchived && <span className="ml-2 tag">已归档</span>}
-            </div>
-            <h1 className="font-display text-[24px] font-semibold tracking-tight">{data.title}</h1>
+        <div className="mb-4">
+          <div className="text-[11px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-muted)' }}>
+            需求详情 {isArchived && <span className="ml-2 tag">已归档</span>}
           </div>
-          <div className="flex items-center gap-2">
-            {prd?.spec_content ? (
-              <button onClick={handleViewSpec} className="btn btn-ghost">
-                查看 Spec
-              </button>
-            ) : prd ? (
-              <button onClick={handleGenerateSpec} disabled={generatingSpec} className="btn btn-ghost">
-                {generatingSpec ? '生成中…' : '生成 Spec'}
-              </button>
-            ) : null}
-            <button onClick={toggleArchive} className="btn btn-ghost">
-              {isArchived ? '取消归档' : '归档'}
+          <h1 className="font-display text-[24px] font-semibold tracking-tight">{data.title}</h1>
+        </div>
+
+        <div
+          className="flex items-center gap-2 mb-6 pb-4"
+          style={{ borderBottom: '1px solid var(--border-hairline)' }}
+        >
+          {prd?.spec_content ? (
+            <button onClick={handleViewSpec} className="btn btn-ghost">
+              查看 Spec
             </button>
-            <Link
-              href={`/conversation/${data.conversation_id}`}
-              title="回到聊天"
-              aria-label="回到聊天"
-              style={{
-                width: 30,
-                height: 30,
-                padding: 0,
-                borderRadius: 6,
-                background: 'rgba(94, 106, 210, 0.18)',
-                border: '1px solid rgba(94, 106, 210, 0.28)',
-                color: 'var(--accent)',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                textDecoration: 'none',
-              }}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M19 12H5M12 19l-7-7 7-7" />
-              </svg>
-            </Link>
-            <Link href={backHref} className="btn btn-ghost">
-              {backLabel}
-            </Link>
-          </div>
+          ) : prd ? (
+            <button onClick={handleGenerateSpec} disabled={generatingSpec} className="btn btn-ghost">
+              {generatingSpec ? '生成中…' : '生成 Spec'}
+            </button>
+          ) : null}
+          <button onClick={toggleArchive} className="btn btn-ghost">
+            {isArchived ? '取消归档' : '归档'}
+          </button>
+          <Link
+            href={`/conversation/${data.conversation_id}`}
+            title="回到聊天"
+            aria-label="回到聊天"
+            style={{
+              width: 30,
+              height: 30,
+              padding: 0,
+              borderRadius: 6,
+              background: 'rgba(94, 106, 210, 0.18)',
+              border: '1px solid rgba(94, 106, 210, 0.28)',
+              color: 'var(--accent)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              textDecoration: 'none',
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M19 12H5M12 19l-7-7 7-7" />
+            </svg>
+          </Link>
+          <Link href={backHref} className="btn btn-ghost">
+            {backLabel}
+          </Link>
         </div>
 
         {prd ? (

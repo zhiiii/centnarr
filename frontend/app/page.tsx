@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { useVoiceInput } from '@/hooks/useVoiceInput';
+import { Corner } from '@/components/Corner';
 
 interface ProjectOption {
   id: string;
@@ -85,15 +86,19 @@ export default function HomePage() {
     setError(null);
     try {
       const conv = await api.startConversation(projectId || undefined);
+      if (text) {
+        try {
+          sessionStorage.setItem(`pending_initial_${conv.conversation_id}`, text);
+        } catch {}
+      }
       if (pendingImage) {
         try {
           sessionStorage.setItem(`pending_image_${conv.conversation_id}`, JSON.stringify(pendingImage));
         } catch {}
       }
       const q = new URLSearchParams();
-      if (text) q.set('initial', text);
-      if (pendingImage) q.set('has_image', '1');
-      router.push(`/conversation/${conv.conversation_id}?${q.toString()}`);
+      if (text || pendingImage) q.set('auto', '1');
+      router.push(`/conversation/${conv.conversation_id}${q.toString() ? `?${q.toString()}` : ''}`);
     } catch (e) {
       setError((e as Error).message);
       setCreating(false);
@@ -355,20 +360,5 @@ export default function HomePage() {
         </div>
       </div>
     </div>
-  );
-}
-
-function Corner({ pos }: { pos: 'tl' | 'tr' | 'bl' | 'br' }) {
-  return (
-    <svg
-      className={`lux-card-corner ${pos}`}
-      viewBox="0 0 14 14"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1"
-      aria-hidden
-    >
-      <path d="M0 6 L0 0 L6 0" />
-    </svg>
   );
 }

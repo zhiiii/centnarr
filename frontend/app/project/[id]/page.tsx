@@ -4,6 +4,7 @@ import { use, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
+import { Corner } from '@/components/Corner';
 
 interface PrdItem {
   prd_id: string;
@@ -417,17 +418,4 @@ function CardCorners() {
   );
 }
 
-function Corner({ pos }: { pos: 'tl' | 'tr' | 'bl' | 'br' }) {
-  return (
-    <svg
-      className={`lux-card-corner ${pos}`}
-      viewBox="0 0 14 14"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1"
-      aria-hidden
-    >
-      <path d="M0 6 L0 0 L6 0" />
-    </svg>
-  );
-}
+

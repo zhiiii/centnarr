@@ -61,8 +61,7 @@ export default function ConversationPage({ params }: { params: Promise<{ id: str
   const { id } = use(params);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const initialText = searchParams.get('initial') || '';
-  const hasImageFlag = searchParams.get('has_image') === '1';
+  const autoFlag = searchParams.get('auto') === '1';
 
   const [conv, setConv] = useState<ConversationView | null>(null);
   const [input, setInput] = useState('');
@@ -164,40 +163,44 @@ export default function ConversationPage({ params }: { params: Promise<{ id: str
   useEffect(() => {
     if (!conv || initialSentRef.current) return;
     if (conv.state === 'idle') {
-      const hasInitial = !!initialText || hasImageFlag;
-      if (!hasInitial) {
+      if (!autoFlag) {
         initialSentRef.current = true;
         return;
       }
       initialSentRef.current = true;
       const runInitial = async () => {
-        if (initialText) {
-          await runStream(initialText, true);
+        const pendingTextKey = `pending_initial_${id}`;
+        const pendingImageKey = `pending_image_${id}`;
+        let pendingText = '';
+        try {
+          pendingText = sessionStorage.getItem(pendingTextKey) || '';
+          if (pendingText) sessionStorage.removeItem(pendingTextKey);
+        } catch {}
+        if (pendingText) {
+          await runStream(pendingText, true);
         }
-        if (hasImageFlag) {
-          try {
-            const raw = sessionStorage.getItem(`pending_image_${id}`);
-            if (raw) {
-              sessionStorage.removeItem(`pending_image_${id}`);
-              const parsed = JSON.parse(raw) as { name: string; dataUrl: string; size: number };
-              const { blob, ext } = dataUrlToBlob(parsed.dataUrl);
-              const filename = parsed.name || `screenshot.${ext}`;
-              const res = await api.uploadFile(id, blob, filename);
-              setPendingImages([
-                {
-                  file_id: res.file_id,
-                  file_url: res.file_url,
-                  file_type: res.file_type,
-                  name: filename,
-                  dataUrl: parsed.dataUrl,
-                  size: res.size,
-                },
-              ]);
-              await runStream(`[image] ${filename}`, false, { input_type: 'file', meta: { file_id: res.file_id, file_url: res.file_url, file_type: res.file_type, size: res.size } });
-            }
-          } catch (e) {
-            setError(`补充图片失败：${(e as Error).message}`);
+        try {
+          const raw = sessionStorage.getItem(pendingImageKey);
+          if (raw) {
+            sessionStorage.removeItem(pendingImageKey);
+            const parsed = JSON.parse(raw) as { name: string; dataUrl: string; size: number };
+            const { blob, ext } = dataUrlToBlob(parsed.dataUrl);
+            const filename = parsed.name || `screenshot.${ext}`;
+            const res = await api.uploadFile(id, blob, filename);
+            setPendingImages([
+              {
+                file_id: res.file_id,
+                file_url: res.file_url,
+                file_type: res.file_type,
+                name: filename,
+                dataUrl: parsed.dataUrl,
+                size: res.size,
+              },
+            ]);
+            await runStream(`[image] ${filename}`, false, { input_type: 'file', meta: { file_id: res.file_id, file_url: res.file_url, file_type: res.file_type, size: res.size } });
           }
+        } catch (e) {
+          setError(`补充图片失败：${(e as Error).message}`);
         }
       };
       void runInitial();
@@ -205,7 +208,7 @@ export default function ConversationPage({ params }: { params: Promise<{ id: str
       initialSentRef.current = true;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conv, initialText, hasImageFlag]);
+  }, [conv, autoFlag]);
 
   const runStream = async (
     text: string,
@@ -678,16 +681,16 @@ export default function ConversationPage({ params }: { params: Promise<{ id: str
               )}
 
               <div
-                className="composer-shell flex items-end gap-2.5"
+                className="composer-shell flex items-end gap-2"
                 style={{
                   background: 'var(--bg-surface-1)',
                   border: '1px solid var(--border-hairline)',
-                  borderRadius: 14,
-                  padding: 10,
+                  borderRadius: 10,
+                  padding: 7,
                   transition: 'border-color 150ms ease-out',
                 }}
               >
-                <div className="flex flex-col gap-1.5 shrink-0">
+                <div className="flex flex-col gap-1 shrink-0">
                   <button
                     onClick={toggleVoice}
                     disabled={!voiceSupported}
@@ -697,7 +700,7 @@ export default function ConversationPage({ params }: { params: Promise<{ id: str
                     {recording ? (
                       <span className="voice-dot" />
                     ) : (
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                         <rect x="9" y="3" width="6" height="12" rx="3" />
                         <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
                       </svg>
@@ -709,7 +712,7 @@ export default function ConversationPage({ params }: { params: Promise<{ id: str
                     className="composer-icon-btn"
                     title="上传图片"
                   >
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                       <rect x="3" y="3" width="18" height="18" rx="2" />
                       <circle cx="9" cy="9" r="2" />
                       <path d="M21 15l-5-5L5 21" />
@@ -746,15 +749,15 @@ export default function ConversationPage({ params }: { params: Promise<{ id: str
                       outline: 'none',
                       resize: 'none',
                       color: 'var(--text-primary)',
-                      fontSize: 14,
-                      lineHeight: 1.6,
-                      padding: '6px 4px',
-                      minHeight: 56,
+                      fontSize: 13,
+                      lineHeight: 1.55,
+                      padding: '4px 4px',
+                      minHeight: 44,
                     }}
                   />
                   <div
-                    className="flex items-center gap-3 text-[10.5px] px-1"
-                    style={{ color: 'var(--text-muted)', minHeight: 18 }}
+                    className="flex items-center gap-2.5 text-[10px] px-1"
+                    style={{ color: 'var(--text-muted)', minHeight: 16 }}
                   >
                     {uploading && <span>上传中…</span>}
                     {recording && (
@@ -764,12 +767,12 @@ export default function ConversationPage({ params }: { params: Promise<{ id: str
                     )}
                     {pendingImages.length > 0 && <span>{pendingImages.length} 张图片待发送</span>}
                     {inputType === 'file' && <span className="tag tag-accent">识别为聊天记录 (file)</span>}
-                    <span style={{ marginLeft: 'auto', opacity: 0.7 }}>
+                    <span style={{ marginLeft: 'auto', opacity: 0.65 }}>
                       <kbd
                         style={{
-                          fontSize: 10,
-                          padding: '1px 5px',
-                          borderRadius: 4,
+                          fontSize: 9,
+                          padding: '1px 4px',
+                          borderRadius: 3,
                           background: 'var(--bg-surface-2)',
                           border: '1px solid var(--border-hairline)',
                           fontFamily: 'inherit',
@@ -782,17 +785,17 @@ export default function ConversationPage({ params }: { params: Promise<{ id: str
                   </div>
                 </div>
 
-                <div className="flex flex-col gap-1.5 shrink-0">
+                <div className="flex flex-col gap-1 shrink-0">
                   <button
                     onClick={onSubmit}
                     disabled={pending || (!input.trim() && pendingImages.length === 0) || conv.state === 'idle'}
                     className="btn btn-primary"
                     style={{
-                      padding: '10px 18px',
-                      fontSize: 13.5,
-                      fontWeight: 600,
-                      borderRadius: 10,
-                      minHeight: 44,
+                      padding: '7px 12px',
+                      fontSize: 12,
+                      fontWeight: 500,
+                      borderRadius: 6,
+                      minHeight: 30,
                     }}
                   >
                     {pending ? (
@@ -803,7 +806,7 @@ export default function ConversationPage({ params }: { params: Promise<{ id: str
                     ) : (
                       <>
                         发送
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M5 12h14M13 5l7 7-7 7" />
                         </svg>
                       </>
@@ -815,11 +818,11 @@ export default function ConversationPage({ params }: { params: Promise<{ id: str
                     title={conv.state === 'confirming' ? '已结束对话' : '点击结束对话，进入签收'}
                     className="btn btn-ghost"
                     style={{
-                      padding: '8px 14px',
-                      fontSize: 12,
-                      borderRadius: 8,
+                      padding: '5px 10px',
+                      fontSize: 11,
+                      borderRadius: 5,
                       whiteSpace: 'nowrap',
-                      minHeight: 36,
+                      minHeight: 24,
                     }}
                   >
                     {conv.state === 'confirming'

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, DocView, DeltaSet } from '@/lib/api';
+import { Corner } from './Corner';
 
 interface Props {
   doc: DocView;
@@ -76,7 +77,11 @@ export function DocPanel({
   };
 
   return (
-    <div className="p-6 pb-2">
+    <div className="lux-card p-6 pb-2 mx-4 mt-4 mb-3 relative">
+      <Corner pos="tl" />
+      <Corner pos="tr" />
+      <Corner pos="bl" />
+      <Corner pos="br" />
       <div className="flex items-start justify-between mb-5">
         <div className="min-w-0 flex-1">
           <div className="text-[11px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-muted)' }}>
@@ -87,19 +92,8 @@ export function DocPanel({
             <DeltaTag kind={tagMap.get('scene')} />
           </div>
         </div>
-        <div className="text-right flex-shrink-0 ml-4">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-              完成度
-            </span>
-            <span
-              className="font-display font-semibold text-[18px] tabular-nums"
-              style={{ color: completion >= 80 ? 'var(--success)' : 'var(--text-primary)' }}
-            >
-              <AnimatedNumber value={completion} />%
-            </span>
-          </div>
-          <ProgressBar value={completion} />
+        <div className="flex-shrink-0 ml-4 self-start">
+          <CompletionDots doc={displayDoc} completion={completion} />
         </div>
       </div>
 
@@ -406,47 +400,43 @@ function Empty({ children }: { children: React.ReactNode }) {
   );
 }
 
-function ProgressBar({ value }: { value: number }) {
+function CompletionDots({ doc, completion }: { doc: DocView; completion: number }) {
+  const fields: Array<{ key: keyof DocView | string; label: string; filled: boolean; weight: number }> = [
+    { key: 'scene', label: '场景', filled: !!doc.scene?.trim(), weight: 20 },
+    { key: 'background', label: '背景', filled: !!doc.background?.trim(), weight: 15 },
+    { key: 'roles', label: '角色', filled: doc.roles?.some((r) => r.name?.trim()) ?? false, weight: 15 },
+    { key: 'pain_points', label: '痛点', filled: doc.pain_points?.some((p) => p.description?.trim()) ?? false, weight: 15 },
+    { key: 'expected_outcomes', label: '期望', filled: doc.expected_outcomes?.some((e) => e.description?.trim()) ?? false, weight: 20 },
+    { key: 'key_scenarios', label: '场景示例', filled: doc.key_scenarios?.some((s) => s.description?.trim()) ?? false, weight: 15 },
+  ];
+  const filledCount = fields.filter((f) => f.filled).length;
+  const totalCount = fields.length;
+  const weighted = fields.reduce((sum, f) => sum + (f.filled ? f.weight : 0), 0);
+  const allFilled = filledCount === totalCount;
   return (
-    <div
-      className="w-32 h-1 rounded-full overflow-hidden"
-      style={{ background: 'var(--bg-surface-3)' }}
-    >
-      <div
-        className="h-full transition-all duration-500"
-        style={{
-          width: `${value}%`,
-          background: value >= 80 ? 'var(--success)' : 'var(--accent)',
-        }}
-      />
+    <div className="flex flex-col items-end gap-1.5" title={`完成度基于 6 个字段加权: ${weighted}/100`}>
+      <div className="flex items-center gap-1.5">
+        {fields.map((f) => (
+          <span
+            key={String(f.key)}
+            title={`${f.label}${f.filled ? ' ✓' : ' (待补)'}`}
+            style={{
+              width: 7,
+              height: 7,
+              borderRadius: 999,
+              background: f.filled ? 'var(--gold)' : 'transparent',
+              border: f.filled ? '1px solid var(--gold)' : '1px solid var(--border-strong)',
+              transition: 'all 220ms ease-out',
+              boxShadow: f.filled ? '0 0 6px var(--gold-glow)' : 'none',
+            }}
+          />
+        ))}
+      </div>
+      <div className="text-[10.5px] tracking-wide" style={{ color: allFilled ? 'var(--gold)' : 'var(--text-muted)' }}>
+        完成度 {filledCount}/{totalCount}
+      </div>
     </div>
   );
-}
-
-function AnimatedNumber({ value }: { value: number }) {
-  const [display, setDisplay] = useState(value);
-  const fromRef = useRef(value);
-  useEffect(() => {
-    const start = fromRef.current;
-    const diff = value - start;
-    if (diff === 0) return;
-    const duration = 500;
-    const startTime = performance.now();
-    let raf = 0;
-    const step = (now: number) => {
-      const t = Math.min((now - startTime) / duration, 1);
-      const eased = 1 - Math.pow(1 - t, 3);
-      setDisplay(Math.round(start + diff * eased));
-      if (t < 1) {
-        raf = requestAnimationFrame(step);
-      } else {
-        fromRef.current = value;
-      }
-    };
-    raf = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(raf);
-  }, [value]);
-  return <>{display}</>;
 }
 
 function DeltaTag({ kind }: { kind?: DeltaKind }) {

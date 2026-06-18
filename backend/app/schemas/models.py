@@ -92,30 +92,6 @@ class ConversationView(BaseModel):
     requirement_status: Optional[str] = None
 
 
-class RespondResponse(BaseModel):
-    conversation_id: str
-    state: str
-    round: int
-    completion: int
-    delta: dict
-    user_facing_summary: str
-    questions: list[QuestionItem] = Field(default_factory=list)
-    emotional_care: Optional[str] = None
-    doc: DocView
-    should_continue: bool
-
-
-class FirstMessageResponse(BaseModel):
-    conversation_id: str
-    state: str
-    round: int
-    scene_analysis: SceneAnalysis
-    questions: QuestionGeneration
-    doc: DocView
-    completion: int
-    user_facing_summary: str
-
-
 class ConfirmRequest(BaseModel):
     conversation_id: str
 

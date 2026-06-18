@@ -268,27 +268,6 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ project_id: project_id || null }),
     }),
-  sendFirstMessage: (conversation_id: string, content: string) =>
-    request<FirstMessageResponse>('/api/conversation/message', {
-      method: 'POST',
-      body: JSON.stringify({ conversation_id, content }),
-    }),
-  respond: (
-    conversation_id: string,
-    content: string,
-    is_async_supplement = false,
-    options: { input_type?: string; meta?: Record<string, unknown> } = {},
-  ) =>
-    request<RespondResponse>('/api/conversation/respond', {
-      method: 'POST',
-      body: JSON.stringify({
-        conversation_id,
-        content,
-        is_async_supplement,
-        input_type: options.input_type || 'text',
-        meta: options.meta || null,
-      }),
-    }),
   uploadFile: async (conversation_id: string, file: File | Blob, filename?: string): Promise<UploadResponse> => {
     const form = new FormData();
     const name = filename || (file instanceof File ? file.name : 'paste.png');

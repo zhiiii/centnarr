@@ -33,7 +33,6 @@ from app.schemas.models import (
     DocView,
     ExportRequest,
     ExportResponse,
-    FirstMessageResponse,
     MessageRequest,
     MessageTurn,
     PrdAcceptanceRequest,
@@ -51,7 +50,6 @@ from app.schemas.models import (
     RequirementListItem,
     RequirementListResponse,
     RespondRequest,
-    RespondResponse,
     SceneAnalysis,
     SpecResponse,
     StartConversationRequest,
@@ -59,6 +57,8 @@ from app.schemas.models import (
     UploadResponse,
 )
 from app.services import ai_engine
+from app.services import conversation_orchestrator, doc_factory, persistence, sse
+from app.utils import doc_path as doc_path_utils
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +75,80 @@ ALLOWED_MIME_TYPES = {
     "application/json": "json",
 }
 MAX_UPLOAD_SIZE = 5 * 1024 * 1024  # 5MB
+
+
+def _get_latest_doc(conv: models.Conversation) -> dict:
+    return persistence.get_latest_doc(conv)
+
+
+def _save_doc_version(
+    db: Session,
+    conv: models.Conversation,
+    doc: dict,
+    delta: dict,
+    round: int,
+    communication_kind: str = "ai_ask",
+) -> models.DocVersion:
+    return persistence.save_doc_version(
+        db, conv, doc, delta, round, communication_kind
+    )
+
+
+def _save_message(
+    db: Session,
+    conv: models.Conversation,
+    role: str,
+    content: str,
+    input_type: str = "text",
+    meta: Optional[dict] = None,
+) -> models.Message:
+    return persistence.save_message(
+        db, conv, role, content, input_type, meta
+    )
+
+
+def _ai_message_meta(questions: list[dict], emotional_care: Optional[str]) -> dict:
+    return doc_factory.ai_message_meta(questions, emotional_care)
+
+
+def _format_ai_response(qg: dict) -> str:
+    return doc_factory.format_ai_response(qg)
+
+
+def _fallback_prd(confirmed_doc: dict) -> str:
+    return doc_factory.fallback_prd(confirmed_doc)
+
+
+def _set_field_by_path(doc: dict, field_path: str, value: Any) -> Any:
+    return doc_path_utils.set_field_by_path(doc, field_path, value)
+
+
+def _bump_prd_version(current: str) -> str:
+    return doc_path_utils.bump_prd_version(current)
+
+
+def _derive_to_confirm(doc: dict) -> list[str]:
+    return doc_path_utils.derive_to_confirm(doc)
+
+
+def _sse_delta(content: str) -> str:
+    return sse.sse_delta(content)
+
+
+def _sse_error(message: str) -> str:
+    return sse.sse_error(message)
+
+
+def _sse_state(state: str) -> str:
+    return sse.sse_state(state)
+
+
+def _sse_event(payload: dict) -> str:
+    return sse.sse_event(payload)
+
+
+def _sse_done(payload: dict) -> str:
+    return sse.sse_done(payload)
 
 
 def _stringify_delta_value(v):
@@ -165,56 +239,7 @@ def _serialize_conversation(
 
 
 def _get_latest_doc(conv: models.Conversation) -> dict:
-    if conv.doc_versions:
-        latest = max(conv.doc_versions, key=lambda d: (d.round, d.created_at))
-        return latest.doc or {}
-    return ai_engine._empty_doc()
-
-
-def _save_doc_version(
-    db: Session,
-    conv: models.Conversation,
-    doc: dict,
-    delta: dict,
-    round: int,
-    communication_kind: str = "ai_ask",
-) -> models.DocVersion:
-    version = models.DocVersion(
-        conversation_id=conv.id,
-        round=round,
-        doc=doc,
-        delta=delta,
-        communication_kind=communication_kind,
-    )
-    db.add(version)
-    db.commit()
-    db.refresh(version)
-    return version
-
-
-def _save_message(
-    db: Session,
-    conv: models.Conversation,
-    role: str,
-    content: str,
-    input_type: str = "text",
-    meta: Optional[dict] = None,
-) -> models.Message:
-    msg = models.Message(
-        conversation_id=conv.id,
-        role=role,
-        content=content,
-        input_type=input_type,
-        meta=meta,
-    )
-    db.add(msg)
-    db.commit()
-    db.refresh(msg)
-    return msg
-
-
-def _ai_message_meta(questions: list[dict], emotional_care: Optional[str]) -> dict:
-    return {"questions": questions, "emotional_care": emotional_care}
+    return persistence.get_latest_doc(conv)
 
 
 @router.post("/conversation/start", response_model=StartConversationResponse)
@@ -243,103 +268,6 @@ async def get_conversation(conversation_id: str, db: Session = Depends(get_db)) 
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
     return _serialize_conversation(db, conv)
-
-
-@router.post("/conversation/message", response_model=FirstMessageResponse)
-async def post_message(req: MessageRequest, db: Session = Depends(get_db)) -> dict:
-    conv = db.get(models.Conversation, req.conversation_id)
-    if not conv:
-        raise HTTPException(status_code=404, detail="Conversation not found")
-
-    sm = StateMachine(state=conv.state, round=conv.current_round, completion=conv.completion)
-    if sm.state not in (ConversationState.IDLE, ConversationState.SCENE_IDENTIFYING):
-        raise HTTPException(status_code=400, detail=f"Cannot post first message in state {sm.state}")
-
-    sm.transition("first_message")
-
-    _save_message(db, conv, role="user", content=req.content, input_type=req.input_type, meta=req.meta)
-
-    try:
-        scene_analysis = await ai_engine.call_scene_identification(req.content)
-    except Exception as e:
-        logger.exception("Scene identification failed: %s", e)
-        scene_analysis = {
-            "scene": req.content[:30] or "未识别场景",
-            "roles": [],
-            "pain_points": [{"description": req.content[:80], "frequency": "未知", "severity": "严重"}],
-            "expected_outcomes": [{"description": "解决问题", "explicit": False}],
-            "emotional_signal": "平静",
-            "urgency": "中",
-            "summary": req.content[:100],
-        }
-
-    sm.transition("scene_identified")
-    sm.state = ConversationState.ASKING
-
-    dialogue_history = [{"role": "user", "content": req.content}]
-    try:
-        qg = await ai_engine.call_question_generation(scene_analysis, dialogue_history, sm.round)
-    except Exception as e:
-        logger.exception("Question generation failed: %s", e)
-        qg = {
-            "questions": [
-                {"id": "q1", "dimension": "关键场景", "question": "能详细说说具体场景吗？", "why": "了解场景细节", "examples": []},
-                {"id": "q2", "dimension": "期望效果", "question": "你希望解决到什么程度？", "why": "明确期望", "examples": []},
-                {"id": "q3", "dimension": "责任方", "question": "现在是谁在处理？", "why": "了解现状", "examples": []},
-            ],
-            "emotional_care": None,
-            "should_continue": True,
-            "reason_to_continue": "兜底问题，等待业务人员回答",
-        }
-
-    initial_doc = {
-        "scene": scene_analysis.get("scene", ""),
-        "background": req.content[:120],
-        "roles": scene_analysis.get("roles", []),
-        "pain_points": scene_analysis.get("pain_points", []),
-        "expected_outcomes": scene_analysis.get("expected_outcomes", []),
-        "key_scenarios": [],
-        "to_confirm": ["出错类型", "出错处理流程", "责任方", "期望效果", "发生频率"],
-    }
-    completion = calc_completion(initial_doc)
-    initial_doc["to_confirm"] = _derive_to_confirm(initial_doc)
-
-    _save_doc_version(
-        db,
-        conv,
-        doc=initial_doc,
-        delta={"added": [{"field": "scene", "content": initial_doc["scene"], "source": "业务人员第 1 轮"}], "modified": [], "confirmed": []},
-        round=sm.round,
-        communication_kind="ai_ask",
-    )
-
-    conv.state = sm.state.value
-    conv.current_round = sm.round
-    conv.completion = completion
-    conv.title = ai_engine._generate_title(scene_analysis.get("scene", ""), req.content)
-    db.commit()
-    db.refresh(conv)
-
-    ai_content = _format_ai_response(qg)
-    _save_message(
-        db,
-        conv,
-        role="assistant",
-        content=ai_content,
-        input_type="text",
-        meta=_ai_message_meta(qg["questions"], qg.get("emotional_care")),
-    )
-
-    return FirstMessageResponse(
-        conversation_id=conv.id,
-        state=conv.state,
-        round=conv.current_round,
-        scene_analysis=SceneAnalysis(**scene_analysis),
-        questions=QuestionGeneration(**qg),
-        doc=DocView(**initial_doc),
-        completion=conv.completion,
-        user_facing_summary=f"我把你说的整理成\"{conv.title}\"了，问你几个关键问题。",
-    ).model_dump()
 
 
 @router.post("/conversation/message/stream")
@@ -588,127 +516,6 @@ async def _stream_with_timeout(gen, timeout_s: float):
     except asyncio.CancelledError:
         logger.info("stream cancelled")
         raise
-
-
-@router.post("/conversation/respond", response_model=RespondResponse)
-async def post_respond(req: RespondRequest, db: Session = Depends(get_db)) -> dict:
-    conv = db.get(models.Conversation, req.conversation_id)
-    if not conv:
-        raise HTTPException(status_code=404, detail="Conversation not found")
-
-    sm = StateMachine(state=conv.state, round=conv.current_round, completion=conv.completion)
-    if sm.state not in (ConversationState.ASKING, ConversationState.INTEGRATING):
-        raise HTTPException(status_code=400, detail=f"Cannot respond in state {sm.state}")
-
-    sm.transition("user_answered")
-
-    _save_message(db, conv, role="user", content=req.content, input_type=req.input_type, meta=req.meta)
-
-    # 立即把 ANSWERING 状态保存到 DB，让前端 GET 看到"AI 在想..."
-    conv.state = sm.state.value
-    db.commit()
-
-    previous_doc = _get_latest_doc(conv)
-    last_assistant = (
-        db.query(models.Message)
-        .filter_by(conversation_id=conv.id, role="assistant")
-        .order_by(models.Message.created_at.desc())
-        .first()
-    )
-    last_questions = (last_assistant.meta or {}).get("questions", []) if last_assistant else []
-
-    is_async = req.is_async_supplement or ai_engine.detect_async_supplement(req.content)
-
-    try:
-        if is_async:
-            integration = ai_engine.fallback_integration(previous_doc, req.content)
-            qg = {"questions": [], "emotional_care": None, "should_continue": True, "reason_to_continue": "异步补充"}
-        else:
-            integration = await ai_engine.call_info_integration(
-                previous_doc, req.content, last_questions, sm.round
-            )
-    except Exception as e:
-        logger.exception("Info integration failed: %s", e)
-        integration = ai_engine.fallback_integration(previous_doc, req.content)
-
-    # LLM 返回：ANSWERING → INTEGRATING
-    sm.transition("llm_returned")
-
-    updated_doc = integration["updated_doc"]
-    updated_doc["to_confirm"] = _derive_to_confirm(updated_doc)
-
-    sm.transition("integrated")
-    sm.completion = integration["completion_percentage"]
-    updated_doc_for_calc = updated_doc
-
-    if sm.state == ConversationState.ASKING and not is_async:
-        dialogue_history = [
-            {"role": m.role, "content": m.content}
-            for m in conv.messages
-        ]
-        try:
-            qg = await ai_engine.call_question_generation(
-                updated_doc, dialogue_history, sm.round
-            )
-        except Exception as e:
-            logger.exception("Question generation failed: %s", e)
-            qg = {
-                "questions": [],
-                "emotional_care": None,
-                "should_continue": integration["should_continue"],
-                "reason_to_continue": "兜底",
-            }
-    else:
-        qg = {
-            "questions": [],
-            "emotional_care": None,
-            "should_continue": integration["should_continue"],
-            "reason_to_continue": "异步补充，无需反问",
-        }
-
-    _save_doc_version(
-        db,
-        conv,
-        doc=updated_doc,
-        delta=integration["delta"],
-        round=sm.round,
-        communication_kind="async_supplement" if is_async else "user_supplement",
-    )
-
-    conv.state = sm.state.value
-    conv.current_round = sm.round
-    conv.completion = sm.completion
-    conv.title = conv.title or ai_engine._generate_title(updated_doc.get("scene", ""), req.content)
-    db.commit()
-    db.refresh(conv)
-
-    ai_content = integration["user_facing_summary"]
-    if qg.get("emotional_care"):
-        ai_content = qg["emotional_care"] + "\n\n" + ai_content
-    if qg.get("questions"):
-        ai_content += "\n\n" + _format_ai_response(qg)
-
-    _save_message(
-        db,
-        conv,
-        role="assistant",
-        content=ai_content,
-        input_type="text",
-        meta=_ai_message_meta(qg.get("questions", []), qg.get("emotional_care")),
-    )
-
-    return RespondResponse(
-        conversation_id=conv.id,
-        state=conv.state,
-        round=conv.current_round,
-        completion=conv.completion,
-        delta=integration["delta"],
-        user_facing_summary=integration["user_facing_summary"],
-        questions=[QuestionItem(**q) for q in qg.get("questions", [])],
-        emotional_care=qg.get("emotional_care"),
-        doc=DocView(**updated_doc),
-        should_continue=integration["should_continue"],
-    ).model_dump()
 
 
 @router.post("/conversation/respond/stream")
@@ -1091,7 +898,8 @@ async def post_generate_prd(req: ConfirmRequest, db: Session = Depends(get_db)) 
     db.refresh(prd)
 
     sm = StateMachine(state=conv.state)
-    sm.state = ConversationState.PRD_GENERATING
+    sm.transition("force_confirming")  # 直达 PRD_GENERATING 前的状态
+    sm.transition("user_confirmed")
     sm.transition("prd_generated")
 
     conv.state = sm.state.value
@@ -1412,100 +1220,11 @@ async def assign_requirement_to_project(
 
 
 def _format_ai_response(qg: dict) -> str:
-    parts: list[str] = []
-    if qg.get("emotional_care"):
-        parts.append(qg["emotional_care"])
-        parts.append("")
-    qs = qg.get("questions") or []
-    for i, q in enumerate(qs, 1):
-        text = f"{i}. {q.get('question','')}"
-        if q.get("examples"):
-            text += f"\n   （可选答案：{' / '.join(q['examples'][:3])}）"
-        parts.append(text)
-    return "\n".join(parts)
-
-
-FORBIDDEN_KEYS = {"__proto__", "constructor", "prototype"}
+    return doc_factory.format_ai_response(qg)
 
 
 def _set_field_by_path(doc: dict, field_path: str, value: Any) -> Any:
-    """按字段路径（支持 a.b[0].c 形式）设置 doc 中对应位置，并返回旧值。
-
-    路径示例:
-        - "background"
-        - "pain_points[0].description"
-        - "roles[1].name"
-    """
-    if not field_path or not isinstance(field_path, str):
-        raise ValueError("field_path 必须是非空字符串")
-
-    if not re.fullmatch(r"[A-Za-z0-9_\-\.\[\]]+", field_path):
-        raise ValueError(f"field_path 含非法字符: {field_path}")
-
-    for k in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", field_path):
-        if k in FORBIDDEN_KEYS:
-            raise ValueError(f"field_path 含保留字段: {k}")
-
-    tokens: list[tuple[str, str]] = []
-    for segment in field_path.split("."):
-        if not segment:
-            raise ValueError(f"field_path 存在空段: {field_path}")
-        buf = ""
-        i = 0
-        while i < len(segment):
-            ch = segment[i]
-            if ch == "[":
-                if buf:
-                    tokens.append(("key", buf))
-                    buf = ""
-                close = segment.find("]", i)
-                if close < 0:
-                    raise ValueError(f"field_path 缺少 ']': {field_path}")
-                idx_str = segment[i + 1:close]
-                if not idx_str.isdigit():
-                    raise ValueError(f"field_path 索引必须为非负整数: {field_path}")
-                tokens.append(("index", idx_str))
-                i = close + 1
-            else:
-                buf += ch
-                i += 1
-        if buf:
-            tokens.append(("key", buf))
-    if not tokens:
-        raise ValueError("field_path 至少包含一段")
-
-    cursor: Any = doc
-    for i, (kind, val) in enumerate(tokens[:-1]):
-        if kind == "key":
-            if not isinstance(cursor, dict):
-                raise ValueError(f"字段路径在第 {i} 段需要 dict")
-            if val not in cursor:
-                cursor[val] = [] if tokens[i + 1][0] == "index" else {}
-            cursor = cursor[val]
-        else:
-            idx = int(val)
-            if not isinstance(cursor, list):
-                raise ValueError(f"字段路径在第 {i} 段需要 list")
-            while len(cursor) <= idx:
-                cursor.append({})
-            cursor = cursor[idx]
-
-    last_kind, last_val = tokens[-1]
-    if last_kind == "key":
-        if not isinstance(cursor, dict):
-            raise ValueError("末段需要 dict 才能用 key 写入")
-        old = cursor.get(last_val)
-        cursor[last_val] = value
-        return old
-    else:
-        idx = int(last_val)
-        if not isinstance(cursor, list):
-            raise ValueError("末段需要 list 才能用 index 写入")
-        while len(cursor) <= idx:
-            cursor.append(None)
-        old = cursor[idx]
-        cursor[idx] = value
-        return old
+    return doc_path_utils.set_field_by_path(doc, field_path, value)
 
 
 @router.patch("/conversation/{conversation_id}/doc", response_model=DocEditResponse)
@@ -1678,62 +1397,35 @@ async def patch_prd_acceptance(
 
 
 def _bump_prd_version(current: str) -> str:
-    """将 v1.0 自增为 v1.1/v1.2；若格式异常则落到 v1.1。"""
-    if not current:
-        return "v1.1"
-    m = re.match(r"^v(\d+)\.(\d+)$", current)
-    if not m:
-        return "v1.1"
-    major = int(m.group(1))
-    minor = int(m.group(2)) + 1
-    return f"v{major}.{minor}"
+    return doc_path_utils.bump_prd_version(current)
 
 
 def _derive_to_confirm(doc: dict) -> list[str]:
-    candidates: list[str] = []
-    if not doc.get("pain_points"):
-        candidates.append("出错类型")
-    pain_points = doc.get("pain_points") or []
-    if not pain_points or not any((p.get("frequency") or "").strip() for p in pain_points):
-        candidates.append("发生频率")
-    if not doc.get("roles"):
-        candidates.append("责任方")
-    if not doc.get("expected_outcomes"):
-        candidates.append("期望效果")
-    if not doc.get("key_scenarios"):
-        candidates.append("关键场景")
-    return candidates
+    return doc_path_utils.derive_to_confirm(doc)
 
 
 def _fallback_prd(confirmed_doc: dict) -> str:
-    title = confirmed_doc.get("scene") or "未命名需求"
-    return f"# PRD：{title}\n\n> 来源：业务确认稿（兜底输出）\n\n## 1. 需求背景\n\n{confirmed_doc.get('background','')}\n\n## 2. 待评估\n\n请联系产品经理完善。\n"
+    return doc_factory.fallback_prd(confirmed_doc)
 
 
 def _sse_delta(content: str) -> str:
-    """SSE delta 事件：{"type": "delta", "content": ...}"""
-    return f"data: {json.dumps({'type': 'delta', 'content': content}, ensure_ascii=False)}\n\n"
+    return sse.sse_delta(content)
 
 
 def _sse_error(message: str) -> str:
-    """SSE 错误事件：{"type": "error", "message": ...}"""
-    return f"data: {json.dumps({'type': 'error', 'message': message}, ensure_ascii=False)}\n\n"
+    return sse.sse_error(message)
 
 
 def _sse_state(state: str) -> str:
-    """SSE 状态事件：{"type": "state", "state": "..."} - 让前端实时看到状态机变化"""
-    return f"data: {json.dumps({'type': 'state', 'state': state}, ensure_ascii=False)}\n\n"
+    return sse.sse_state(state)
 
 
 def _sse_event(payload: dict) -> str:
-    """SSE 通用事件：{"type": "<payload.type>", ...payload}"""
-    return f"data: {json.dumps(payload, ensure_ascii=False, default=str)}\n\n"
+    return sse.sse_event(payload)
 
 
 def _sse_done(payload: dict) -> str:
-    """SSE done 事件：{"type": "done", ...payload}"""
-    body = {"type": "done", **payload}
-    return f"data: {json.dumps(body, ensure_ascii=False, default=str)}\n\n"
+    return sse.sse_done(payload)
 
 
 def _truncate(text: str, n: int = 240) -> str:

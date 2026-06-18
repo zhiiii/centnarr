@@ -8,6 +8,7 @@ from typing import Any, AsyncIterator, Optional
 
 from app.core.llm import get_llm
 from app.core.state_machine import calc_completion
+from app.services import stream_protocol as stream_protocol_lib
 
 logger = logging.getLogger(__name__)
 
@@ -96,28 +97,6 @@ def _generate_title(scene: str, background: str) -> str:
     if len(text) > 30:
         text = text[:30] + "..."
     return text or "新需求"
-
-
-def parse_streaming_json_fragments(buffer: str, start_marker: str, end_marker: str) -> tuple[Optional[str], str]:
-    """从 token buffer 中识别 JSON 片段边界。
-
-    返回 (parsed_json_str_or_None, remaining_buffer)。
-    parsed_json_str 不为 None 时，表示找到了一段完整的 JSON。
-    """
-    start_idx = buffer.find(start_marker)
-    if start_idx < 0:
-        return None, buffer
-
-    after_start = start_idx + len(start_marker)
-    end_idx = buffer.find(end_marker, after_start)
-    if end_idx < 0:
-        return None, buffer[after_start:]
-
-    json_str = buffer[after_start:end_idx].strip()
-    remaining = buffer[end_idx + len(end_marker):]
-    if not json_str:
-        return None, remaining
-    return json_str, remaining
 
 
 def _try_extract_json_from_buffer(buffer: str) -> Optional[dict]:
@@ -390,78 +369,33 @@ async def stream_question_text(
     system = "你严格按要求的输出格式输出中文自然语言 + JSON。\n\n" + QUESTION_STREAM_INSTRUCTION
     user = user + "\n\n" + QUESTION_STREAM_INSTRUCTION
 
-    pre_buffer = ""
-    json_buffer = ""
-    seen_marker = False
-    questions_emitted = False
-    safety_prefix = JSON_FENCE_START[: len(JSON_FENCE_START) - 1]
+    def _on_parsed(parsed: dict):
+        return _questions_event_from_parsed(parsed)
+
+    def _on_flush_final(remainder: str):
+        if remainder.strip() and not remainder.strip().startswith("```"):
+            return {"type": "delta", "content": remainder}
+        return None
+
+    proto = stream_protocol_lib.StreamProtocol(
+        make_event=_on_parsed,
+        flush_final=lambda r: (
+            {"type": "delta", "content": r} if r.strip() and not r.strip().startswith("```") else None
+        ),
+    )
 
     try:
         async for chunk in get_llm().stream_text(system, user, temperature=0.5):
-            if not chunk:
-                continue
-            if not seen_marker:
-                pre_buffer += chunk
-                idx = pre_buffer.find(JSON_FENCE_START)
-                if idx >= 0:
-                    opening = pre_buffer[:idx]
-                    if opening:
-                        yield {"type": "delta", "content": opening}
-                    json_buffer = pre_buffer[idx + len(JSON_FENCE_START):]
-                    pre_buffer = ""
-                    seen_marker = True
-                    idx2 = json_buffer.find(JSON_FENCE_END)
-                    remainder = ""
-                    if idx2 >= 0:
-                        json_str = json_buffer[:idx2]
-                        remainder = json_buffer[idx2 + len(JSON_FENCE_END):]
-                        if json_str.strip() and not questions_emitted:
-                            parsed = _safe_parse_json(json_str)
-                            if parsed:
-                                questions_emitted = True
-                                yield _questions_event_from_parsed(parsed)
-                        seen_marker = False
-                        json_buffer = ""
-                        cleaned = remainder.strip()
-                        if cleaned and "```" not in cleaned and not cleaned.startswith("{"):
-                            yield {"type": "delta", "content": remainder}
-                else:
-                    safe_split_at = max(0, len(pre_buffer) - len(safety_prefix))
-                    if safe_split_at > 0:
-                        yield {"type": "delta", "content": pre_buffer[:safe_split_at]}
-                        pre_buffer = pre_buffer[safe_split_at:]
-            else:
-                json_buffer += chunk
-                idx = json_buffer.find(JSON_FENCE_END)
-                if idx >= 0:
-                    json_str = json_buffer[:idx]
-                    remainder = json_buffer[idx + len(JSON_FENCE_END):]
-                    if json_str.strip() and not questions_emitted:
-                        parsed = _safe_parse_json(json_str)
-                        if parsed:
-                            questions_emitted = True
-                            yield _questions_event_from_parsed(parsed)
-                    seen_marker = False
-                    json_buffer = ""
-                    cleaned = remainder.strip()
-                    if cleaned and "```" not in cleaned and not cleaned.startswith("{"):
-                        yield {"type": "delta", "content": remainder}
-
-        if not questions_emitted:
-            if pre_buffer.strip():
-                yield {"type": "delta", "content": pre_buffer}
-            if json_buffer.strip():
-                parsed = _safe_parse_json(json_buffer)
-                if parsed:
-                    yield _questions_event_from_parsed(parsed)
-                else:
-                    yield {
-                        "type": "questions",
-                        "questions": [],
-                        "emotional_care": None,
-                        "should_continue": True,
-                        "reason_to_continue": "流式未输出有效 JSON",
-                    }
+            for ev in proto.feed(chunk):
+                yield ev
+        if not proto.event_emitted:
+            yield {
+                "type": "questions",
+                "questions": [],
+                "emotional_care": None,
+                "should_continue": True,
+                "reason_to_continue": "流式未输出有效 JSON",
+            }
     except Exception as e:  # noqa: BLE001
         logger.exception("stream_question_text failed: %s", e)
         yield {"type": "error", "message": f"反问生成失败：{_truncate(str(e))}"}
@@ -506,73 +440,20 @@ async def stream_summary_text(
     system = "你严格按要求的输出格式输出中文自然语言 + JSON。\n\n" + INTEGRATION_STREAM_INSTRUCTION
     user = user + "\n\n" + INTEGRATION_STREAM_INSTRUCTION
 
-    pre_buffer = ""
-    json_buffer = ""
-    seen_marker = False
-    integration_emitted = False
-    safety_prefix = JSON_FENCE_START[: len(JSON_FENCE_START) - 1]
+    proto = stream_protocol_lib.StreamProtocol(
+        make_event=lambda parsed: _integration_event_from_parsed(parsed, previous_doc),
+        flush_final=lambda r: (
+            {"type": "delta", "content": r} if r.strip() and not r.strip().startswith("```") else None
+        ),
+    )
 
     try:
         async for chunk in get_llm().stream_text(system, user, temperature=0.5):
-            if not chunk:
-                continue
-            if not seen_marker:
-                pre_buffer += chunk
-                idx = pre_buffer.find(JSON_FENCE_START)
-                if idx >= 0:
-                    opening = pre_buffer[:idx]
-                    if opening:
-                        yield {"type": "delta", "content": opening}
-                    json_buffer = pre_buffer[idx + len(JSON_FENCE_START):]
-                    pre_buffer = ""
-                    seen_marker = True
-                    idx2 = json_buffer.find(JSON_FENCE_END)
-                    remainder = ""
-                    if idx2 >= 0:
-                        json_str = json_buffer[:idx2]
-                        remainder = json_buffer[idx2 + len(JSON_FENCE_END):]
-                        if json_str.strip() and not integration_emitted:
-                            parsed = _safe_parse_json(json_str)
-                            if parsed:
-                                integration_emitted = True
-                                yield _integration_event_from_parsed(parsed, previous_doc)
-                    seen_marker = False
-                    json_buffer = ""
-                    cleaned = remainder.strip()
-                    if cleaned and "```" not in cleaned and not cleaned.startswith("{"):
-                        yield {"type": "delta", "content": remainder}
-                else:
-                    safe_split_at = max(0, len(pre_buffer) - len(safety_prefix))
-                    if safe_split_at > 0:
-                        yield {"type": "delta", "content": pre_buffer[:safe_split_at]}
-                        pre_buffer = pre_buffer[safe_split_at:]
-            else:
-                json_buffer += chunk
-                idx = json_buffer.find(JSON_FENCE_END)
-                if idx >= 0:
-                    json_str = json_buffer[:idx]
-                    remainder = json_buffer[idx + len(JSON_FENCE_END):]
-                    if json_str.strip() and not integration_emitted:
-                        parsed = _safe_parse_json(json_str)
-                        if parsed:
-                            integration_emitted = True
-                            yield _integration_event_from_parsed(parsed, previous_doc)
-                seen_marker = False
-                json_buffer = ""
-                cleaned = remainder.strip()
-                if cleaned and "```" not in cleaned and not cleaned.startswith("{"):
-                    yield {"type": "delta", "content": remainder}
-
-        if not integration_emitted:
-            if pre_buffer.strip():
-                yield {"type": "delta", "content": pre_buffer}
-            if json_buffer.strip():
-                parsed = _safe_parse_json(json_buffer)
-                if parsed:
-                    yield _integration_event_from_parsed(parsed, previous_doc)
-                else:
-                    fb = fallback_integration(previous_doc, new_input)
-                    yield {"type": "integration", **fb}
+            for ev in proto.feed(chunk):
+                yield ev
+        if not proto.event_emitted:
+            fb = fallback_integration(previous_doc, new_input)
+            yield {"type": "integration", **fb}
     except Exception as e:  # noqa: BLE001
         logger.exception("stream_summary_text failed: %s", e)
         yield {"type": "error", "message": f"信息整合失败：{_truncate(str(e))}"}
@@ -609,45 +490,3 @@ def _truncate(text: str, n: int = 240) -> str:
         return ""
     text = str(text)
     return text if len(text) <= n else text[:n] + "..."
-
-
-async def stream_questions_as_text(questions_dict: dict) -> AsyncIterator[str]:
-    """旧版本：把 question_generation 的结构化输出翻译成大白话，stream 出来。
-
-    保留兼容。新代码应使用 stream_question_text。
-    """
-    questions = questions_dict.get("questions") or []
-    questions_text = "\n".join(
-        f"{i+1}. [{q.get('dimension','')}] {q.get('question','') or q.get('confirm_with_businessperson','')}"
-        for i, q in enumerate(questions)
-    )
-    intro = questions_dict.get("emotional_care") or "好的，我先问你几个关键问题。"
-    humanize_prompt = (
-        "请把以下内容用大白话告诉业务人员，输出中文自然语言，不要 JSON 包裹。\n\n"
-        f"开场白：{intro}\n\n"
-        f"问题列表：\n{questions_text or '（暂无问题）'}\n\n"
-        "要求：1) 先说一句开场白（1-2 句话即可）；"
-        "2) 然后用编号列出每个问题；"
-        "3) 每个问题用'维度：问题内容'格式；"
-        "4) 不要输出 JSON，不要 markdown 代码块。"
-    )
-    system = "你严格按要求输出中文自然语言。"
-    async for chunk in get_llm().stream_text(system, humanize_prompt, temperature=0.5):
-        yield chunk
-
-
-async def stream_summary_as_text(summary: str) -> AsyncIterator[str]:
-    """旧版本：把 user_facing_summary 用 LLM 包装一下，stream 出去。
-
-    保留兼容。新代码应使用 stream_summary_text。
-    """
-    if not summary:
-        summary = "我把你说的都记下来了，咱们继续。"
-    humanize_prompt = (
-        "请把以下业务确认总结用大白话流利地复述给业务人员（保持原意，可以略作修饰）：\n\n"
-        f"{summary}\n\n"
-        "要求：温和亲切的口吻，不要 JSON，不要 markdown 代码块。"
-    )
-    system = "你严格按要求输出中文自然语言。"
-    async for chunk in get_llm().stream_text(system, humanize_prompt, temperature=0.5):
-        yield chunk

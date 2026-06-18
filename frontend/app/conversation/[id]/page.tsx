@@ -8,6 +8,7 @@ import { DocPanel } from '@/components/DocPanel';
 import { CommunicationTimeline } from '@/components/CommunicationTimeline';
 import { PrdViewer } from '@/components/PrdViewer';
 import { QuestionsCard } from '@/components/QuestionsCard';
+import { useVoiceInput } from '@/hooks/useVoiceInput';
 
 const STREAM_TIMEOUT_MS = 90_000;
 
@@ -22,27 +23,6 @@ interface PendingPrd {
   title: string;
   content: string;
   version: string;
-}
-
-interface SpeechRecognitionLike {
-  start: () => void;
-  stop: () => void;
-  abort: () => void;
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>>; resultIndex: number }) => void) | null;
-  onerror: ((e: { error: string }) => void) | null;
-  onend: (() => void) | null;
-}
-
-function getSpeechRecognition(): (new () => SpeechRecognitionLike) | null {
-  if (typeof window === 'undefined') return null;
-  const w = window as unknown as {
-    SpeechRecognition?: new () => SpeechRecognitionLike;
-    webkitSpeechRecognition?: new () => SpeechRecognitionLike;
-  };
-  return w.SpeechRecognition || w.webkitSpeechRecognition || null;
 }
 
 interface PendingImage {
@@ -91,8 +71,6 @@ export default function ConversationPage({ params }: { params: Promise<{ id: str
   const [prd, setPrd] = useState<PendingPrd | null>(null);
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [recording, setRecording] = useState(false);
-  const [voiceSupported, setVoiceSupported] = useState<boolean>(false);
   const [inputType, setInputType] = useState<'text' | 'file'>('text');
   const [dragOver, setDragOver] = useState(false);
   const [streaming, setStreaming] = useState<{ content: string; error: string | null } | null>(null);
@@ -114,8 +92,13 @@ export default function ConversationPage({ params }: { params: Promise<{ id: str
   const initialSentRef = useRef(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  const voice = useVoiceInput({
+    onResult: (text) => {
+      setInput((prev) => (prev ? prev + (prev.endsWith('\n') ? '' : ' ') : '') + text);
+    },
+  });
 
   useEffect(() => {
     api
@@ -125,14 +108,15 @@ export default function ConversationPage({ params }: { params: Promise<{ id: str
   }, [id]);
 
   useEffect(() => {
-    setVoiceSupported(getSpeechRecognition() !== null);
-  }, []);
+    if (voice.error) setError(voice.error);
+  }, [voice.error]);
+
+  const recording = voice.recording;
+  const voiceSupported = voice.supported;
+  const toggleVoice = voice.toggle;
 
   useEffect(() => {
     return () => {
-      try {
-        recognitionRef.current?.abort();
-      } catch {}
       try {
         abortRef.current?.abort();
       } catch {}
@@ -356,48 +340,6 @@ export default function ConversationPage({ params }: { params: Promise<{ id: str
       setError((e as Error).message);
     } finally {
       setFinishing(false);
-    }
-  };
-
-  const toggleVoice = () => {
-    if (!voiceSupported) return;
-    if (recording) {
-      try {
-        recognitionRef.current?.stop();
-      } catch {}
-      setRecording(false);
-      return;
-    }
-    const SR = getSpeechRecognition();
-    if (!SR) return;
-    const rec = new SR();
-    rec.continuous = true;
-    rec.interimResults = false;
-    rec.lang = 'zh-CN';
-    let buffer = '';
-    rec.onresult = (e) => {
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        const r = e.results[i];
-        if (r && r[0]) buffer += r[0].transcript;
-      }
-    };
-    rec.onerror = (e) => {
-      setError(`语音识别失败：${e.error}`);
-      setRecording(false);
-    };
-    rec.onend = () => {
-      setRecording(false);
-      if (buffer) {
-        setInput((prev) => (prev ? prev + (prev.endsWith('\n') ? '' : ' ') : '') + buffer.trim());
-      }
-    };
-    recognitionRef.current = rec;
-    try {
-      rec.start();
-      setRecording(true);
-      setError(null);
-    } catch (e) {
-      setError(`无法启动语音识别：${(e as Error).message}`);
     }
   };
 

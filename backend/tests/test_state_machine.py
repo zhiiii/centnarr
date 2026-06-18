@@ -34,7 +34,7 @@ def test_normal_flow():
     assert sm.state == ConversationState.ASKING
     assert sm.round == 2
 
-    sm.state = ConversationState.CONFIRMING
+    sm.transition("force_confirming")
     sm.transition("user_confirmed")
     assert sm.state == ConversationState.PRD_GENERATING
 
@@ -77,7 +77,7 @@ def test_full_chat_chain_8_states():
     sm.transition("integrated")
     assert sm.state == ConversationState.ASKING  # 回到 ASKING，等业务人员再答
 
-    sm.state = ConversationState.CONFIRMING  # 6 (业务人员主动 finish)
+    sm.transition("force_confirming")  # 6 (业务人员主动 finish)
     sm.transition("user_confirmed")
     assert sm.state == ConversationState.PRD_GENERATING  # 7
 

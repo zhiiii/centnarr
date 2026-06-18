@@ -161,26 +161,23 @@ export default function RequirementPage({ params }: { params: Promise<{ id: stri
           </button>
           <Link
             href={`/conversation/${data.conversation_id}`}
-            title="回到聊天"
-            aria-label="回到聊天"
+            title="返回聊天"
+            aria-label="返回聊天"
+            className="btn btn-ghost"
             style={{
-              width: 30,
-              height: 30,
-              padding: 0,
+              padding: '4px 10px',
+              fontSize: 12,
               borderRadius: 6,
-              background: 'rgba(94, 106, 210, 0.18)',
-              border: '1px solid rgba(94, 106, 210, 0.28)',
               color: 'var(--accent)',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
+              border: '1px solid rgba(94, 106, 210, 0.28)',
+              background: 'rgba(94, 106, 210, 0.12)',
               textDecoration: 'none',
             }}
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M19 12H5M12 19l-7-7 7-7" />
             </svg>
+            返回聊天
           </Link>
           <Link href={backHref} className="btn btn-ghost">
             {backLabel}

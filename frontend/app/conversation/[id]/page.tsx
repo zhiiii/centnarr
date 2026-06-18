@@ -719,18 +719,83 @@ export default function ConversationPage({ params }: { params: Promise<{ id: str
                 />
 
                 <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-0.5 shrink-0">
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      onClick={toggleVoice}
+                      disabled={!voiceSupported}
+                      title={voiceSupported ? (recording ? '点击停止录音' : '点击开始语音输入') : '当前浏览器不支持语音'}
+                      style={{
+                        width: 28,
+                        height: 28,
+                        padding: 0,
+                        borderRadius: 7,
+                        background: recording ? 'rgba(220, 80, 80, 0.12)' : 'var(--bg-surface-2)',
+                        border: `1px solid ${recording ? 'rgba(220, 80, 80, 0.4)' : 'var(--border-hairline)'}`,
+                        color: recording ? 'var(--destructive)' : 'var(--text-secondary)',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                        transition: 'all 150ms ease-out',
+                      }}
+                    >
+                      {recording ? (
+                        <span className="voice-dot" />
+                      ) : (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="9" y="3" width="6" height="12" rx="3" />
+                          <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+                        </svg>
+                      )}
+                    </button>
                     <button
                       onClick={onPickFile}
                       disabled={uploading}
-                      className="composer-icon-btn"
                       title="上传图片"
+                      style={{
+                        width: 28,
+                        height: 28,
+                        padding: 0,
+                        borderRadius: 7,
+                        background: 'var(--bg-surface-2)',
+                        border: '1px solid var(--border-hairline)',
+                        color: 'var(--text-secondary)',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                        transition: 'all 150ms ease-out',
+                        position: 'relative',
+                      }}
                     >
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                         <rect x="3" y="3" width="18" height="18" rx="2" />
                         <circle cx="9" cy="9" r="2" />
                         <path d="M21 15l-5-5L5 21" />
                       </svg>
+                      {pendingImages.length > 0 && (
+                        <span
+                          style={{
+                            position: 'absolute',
+                            top: -4,
+                            right: -4,
+                            minWidth: 14,
+                            height: 14,
+                            padding: '0 3px',
+                            borderRadius: 999,
+                            background: 'var(--accent)',
+                            color: 'var(--accent-fg)',
+                            fontSize: 9,
+                            fontWeight: 600,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            lineHeight: 1,
+                          }}
+                        >
+                          {pendingImages.length}
+                        </span>
+                      )}
                     </button>
                     <input
                       ref={fileRef}
@@ -739,70 +804,9 @@ export default function ConversationPage({ params }: { params: Promise<{ id: str
                       className="hidden"
                       onChange={onFileChange}
                     />
-                    {pendingImages.length > 0 && (
-                      <span
-                        className="text-[10px] ml-1"
-                        style={{ color: 'var(--text-muted)' }}
-                        title="待发送图片"
-                      >
-                        {pendingImages.length} 张图
-                      </span>
-                    )}
-                    {uploading && (
-                      <span className="text-[10px] ml-1" style={{ color: 'var(--text-muted)' }}>
-                        上传中…
-                      </span>
-                    )}
-                    <div
-                      style={{
-                        width: 1,
-                        height: 16,
-                        background: 'var(--border-hairline)',
-                        margin: '0 8px',
-                      }}
-                      aria-hidden
-                    />
-                    <button
-                      type="button"
-                      onClick={onFinish}
-                      disabled={finishing || pending || conv.state === 'confirming'}
-                      title={conv.state === 'confirming' ? '已结束对话' : '点击结束对话，进入签收'}
-                      className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] transition-colors"
-                      style={{
-                        color: 'var(--text-secondary)',
-                        background: 'transparent',
-                        border: 'none',
-                        cursor: 'pointer',
-                        opacity: 1,
-                      }}
-                    >
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-                      </svg>
-                      {conv.state === 'confirming'
-                        ? '已聊完'
-                        : finishing
-                        ? '处理中…'
-                        : '我聊够了'}
-                    </button>
                   </div>
 
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      onClick={toggleVoice}
-                      disabled={!voiceSupported}
-                      title={voiceSupported ? (recording ? '点击停止录音' : '点击开始语音输入') : '当前浏览器不支持语音'}
-                      className={`composer-icon-btn ${recording ? 'is-recording' : ''}`}
-                    >
-                      {recording ? (
-                        <span className="voice-dot" />
-                      ) : (
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                          <rect x="9" y="3" width="6" height="12" rx="3" />
-                          <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
-                        </svg>
-                      )}
-                    </button>
+                  <div className="flex items-center gap-1.5 shrink-0">
                     <button
                       onClick={onSubmit}
                       disabled={pending || (!input.trim() && pendingImages.length === 0) || conv.state === 'idle'}
@@ -842,6 +846,29 @@ export default function ConversationPage({ params }: { params: Promise<{ id: str
                           <path d="M12 19V5M5 12l7-7 7 7" />
                         </svg>
                       )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onFinish}
+                      disabled={finishing || pending || conv.state === 'confirming'}
+                      title={conv.state === 'confirming' ? '已结束对话' : '点击结束对话，进入签收'}
+                      className="flex items-center gap-1 px-2 py-1 rounded text-[11px] transition-colors"
+                      style={{
+                        color: 'var(--text-secondary)',
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        opacity: 1,
+                      }}
+                    >
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+                      </svg>
+                      {conv.state === 'confirming'
+                        ? '已聊完'
+                        : finishing
+                        ? '处理中…'
+                        : '我聊够了'}
                     </button>
                   </div>
                 </div>

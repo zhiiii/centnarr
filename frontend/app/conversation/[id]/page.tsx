@@ -677,38 +677,54 @@ export default function ConversationPage({ params }: { params: Promise<{ id: str
                 </div>
               )}
 
-              <div className="flex items-end gap-2">
-                <button
-                  onClick={toggleVoice}
-                  disabled={!voiceSupported}
-                  title={voiceSupported ? (recording ? '点击停止录音' : '点击开始语音输入') : '当前浏览器不支持语音'}
-                  className={`btn btn-ghost !p-2 self-end ${recording ? 'voice-recording' : ''}`}
-                  style={recording ? { color: 'var(--destructive)' } : undefined}
-                >
-                  {recording ? (
-                    <span className="voice-dot" />
-                  ) : (
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <rect x="9" y="3" width="6" height="12" rx="3" />
-                      <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+              <div
+                className="composer-shell flex items-end gap-2.5"
+                style={{
+                  background: 'var(--bg-surface-1)',
+                  border: '1px solid var(--border-hairline)',
+                  borderRadius: 14,
+                  padding: 10,
+                  transition: 'border-color 150ms ease-out',
+                }}
+              >
+                <div className="flex flex-col gap-1.5 shrink-0">
+                  <button
+                    onClick={toggleVoice}
+                    disabled={!voiceSupported}
+                    title={voiceSupported ? (recording ? '点击停止录音' : '点击开始语音输入') : '当前浏览器不支持语音'}
+                    className={`composer-icon-btn ${recording ? 'is-recording' : ''}`}
+                  >
+                    {recording ? (
+                      <span className="voice-dot" />
+                    ) : (
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="9" y="3" width="6" height="12" rx="3" />
+                        <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+                      </svg>
+                    )}
+                  </button>
+                  <button
+                    onClick={onPickFile}
+                    disabled={uploading}
+                    className="composer-icon-btn"
+                    title="上传图片"
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="3" width="18" height="18" rx="2" />
+                      <circle cx="9" cy="9" r="2" />
+                      <path d="M21 15l-5-5L5 21" />
                     </svg>
-                  )}
-                </button>
-                <button onClick={onPickFile} disabled={uploading} className="btn btn-ghost !p-2 self-end" title="上传图片">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <rect x="3" y="3" width="18" height="18" rx="2" />
-                    <circle cx="9" cy="9" r="2" />
-                    <path d="M21 15l-5-5L5 21" />
-                  </svg>
-                </button>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept="image/png,image/jpeg,image/gif"
-                  className="hidden"
-                  onChange={onFileChange}
-                />
-                <div className="flex-1">
+                  </button>
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/gif"
+                    className="hidden"
+                    onChange={onFileChange}
+                  />
+                </div>
+
+                <div className="flex-1 min-w-0">
                   <textarea
                     ref={taRef}
                     value={input}
@@ -722,32 +738,97 @@ export default function ConversationPage({ params }: { params: Promise<{ id: str
                     placeholder="用大白话继续说，或者回答问题…  · 也可直接粘贴图片/聊天记录"
                     rows={2}
                     disabled={pending || conv.state === 'idle'}
-                    className="input resize-none"
+                    className="composer-textarea"
+                    style={{
+                      width: '100%',
+                      background: 'transparent',
+                      border: 'none',
+                      outline: 'none',
+                      resize: 'none',
+                      color: 'var(--text-primary)',
+                      fontSize: 14,
+                      lineHeight: 1.6,
+                      padding: '6px 4px',
+                      minHeight: 56,
+                    }}
                   />
-                  <div className="mt-1 flex items-center gap-2 text-[10.5px]" style={{ color: 'var(--text-muted)' }}>
+                  <div
+                    className="flex items-center gap-3 text-[10.5px] px-1"
+                    style={{ color: 'var(--text-muted)', minHeight: 18 }}
+                  >
                     {uploading && <span>上传中…</span>}
-                    {recording && <span className="voice-pulse" style={{ color: 'var(--destructive)' }}>● 录音中</span>}
+                    {recording && (
+                      <span className="voice-pulse" style={{ color: 'var(--destructive)' }}>
+                        ● 录音中
+                      </span>
+                    )}
                     {pendingImages.length > 0 && <span>{pendingImages.length} 张图片待发送</span>}
                     {inputType === 'file' && <span className="tag tag-accent">识别为聊天记录 (file)</span>}
-                    <span className="ml-auto">⌘ + ⏎ 发送</span>
+                    <span style={{ marginLeft: 'auto', opacity: 0.7 }}>
+                      <kbd
+                        style={{
+                          fontSize: 10,
+                          padding: '1px 5px',
+                          borderRadius: 4,
+                          background: 'var(--bg-surface-2)',
+                          border: '1px solid var(--border-hairline)',
+                          fontFamily: 'inherit',
+                        }}
+                      >
+                        ⌘ + ⏎
+                      </kbd>{' '}
+                      发送
+                    </span>
                   </div>
                 </div>
-                <button
-                  onClick={onSubmit}
-                  disabled={pending || (!input.trim() && pendingImages.length === 0) || conv.state === 'idle'}
-                  className="btn btn-primary self-end"
-                >
-                  {pending ? '处理中' : '发送'}
-                </button>
-                <button
-                  onClick={onFinish}
-                  disabled={finishing || pending || conv.state === 'confirming'}
-                  title={conv.state === 'confirming' ? '已结束对话' : '点击结束对话，进入签收'}
-                  className="btn btn-ghost self-end"
-                  style={{ whiteSpace: 'nowrap' }}
-                >
-                  {conv.state === 'confirming' ? '已聊完 ✓' : finishing ? '处理中…' : '我聊够了'}
-                </button>
+
+                <div className="flex flex-col gap-1.5 shrink-0">
+                  <button
+                    onClick={onSubmit}
+                    disabled={pending || (!input.trim() && pendingImages.length === 0) || conv.state === 'idle'}
+                    className="btn btn-primary"
+                    style={{
+                      padding: '10px 18px',
+                      fontSize: 13.5,
+                      fontWeight: 600,
+                      borderRadius: 10,
+                      minHeight: 44,
+                    }}
+                  >
+                    {pending ? (
+                      <>
+                        <span className="voice-dot" style={{ background: 'currentColor' }} />
+                        处理中
+                      </>
+                    ) : (
+                      <>
+                        发送
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M5 12h14M13 5l7 7-7 7" />
+                        </svg>
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={onFinish}
+                    disabled={finishing || pending || conv.state === 'confirming'}
+                    title={conv.state === 'confirming' ? '已结束对话' : '点击结束对话，进入签收'}
+                    className="btn btn-ghost"
+                    style={{
+                      padding: '8px 14px',
+                      fontSize: 12,
+                      borderRadius: 8,
+                      whiteSpace: 'nowrap',
+                      minHeight: 36,
+                    }}
+                  >
+                    {conv.state === 'confirming'
+                      ? '已聊完 ✓'
+                      : finishing
+                      ? '处理中…'
+                      : '我聊够了'}
+                  </button>
+                </div>
               </div>
             </>
           )}

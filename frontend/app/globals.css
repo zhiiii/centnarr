@@ -160,6 +160,53 @@ a {
   background: var(--bg-surface-1);
 }
 
+.composer-shell:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(94, 106, 210, 0.12);
+}
+
+.composer-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--bg-surface-2);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-hairline);
+  cursor: pointer;
+  transition: all 150ms ease-out;
+  flex-shrink: 0;
+}
+
+.composer-icon-btn:hover:not(:disabled) {
+  background: var(--bg-surface-3);
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+.composer-icon-btn:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.composer-icon-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.composer-icon-btn.is-recording {
+  background: rgba(220, 80, 80, 0.12);
+  color: var(--destructive);
+  border-color: rgba(220, 80, 80, 0.4);
+  animation: pulse-recording 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse-recording {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 80, 80, 0.4); }
+  50% { box-shadow: 0 0 0 6px rgba(220, 80, 80, 0); }
+}
+
 .tag {
   display: inline-flex;
   align-items: center;

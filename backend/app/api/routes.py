@@ -304,7 +304,6 @@ async def post_message_stream(req: MessageRequest, request: Request, db: Session
 
     if sm.state == ConversationState.IDLE or sm.state == ConversationState.SCENE_IDENTIFYING:
         sm.transition("scene_identified")
-        sm.state = ConversationState.ASKING
 
     conv_id = conv.id
 
@@ -780,7 +779,7 @@ async def post_confirm(req: ConfirmRequest, db: Session = Depends(get_db)) -> di
 
     sm = StateMachine(state=conv.state, round=conv.current_round, completion=conv.completion)
     if sm.state != ConversationState.CONFIRMING:
-        sm.state = ConversationState.CONFIRMING
+        sm.transition("force_confirming")
         conv.state = sm.state.value
 
     sm.transition("user_confirmed")
@@ -843,7 +842,7 @@ async def post_finish(req: ConfirmRequest, db: Session = Depends(get_db)) -> dic
     sm = StateMachine(
         state=conv.state, round=conv.current_round, completion=conv.completion
     )
-    sm.state = ConversationState.CONFIRMING
+    sm.transition("force_confirming")
     conv.state = sm.state.value
 
     latest_doc = _get_latest_doc(conv)

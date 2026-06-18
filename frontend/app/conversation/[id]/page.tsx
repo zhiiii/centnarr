@@ -365,6 +365,7 @@ export default function ConversationPage({ params }: { params: Promise<{ id: str
     const text = input.trim();
     if ((!text && pendingImages.length === 0) || pending || !conv) return;
 
+    setInput('');
     if (pendingImages.length > 0) {
       const firstImg = pendingImages[0];
       const submitText = text || `[image] ${firstImg.name}`;

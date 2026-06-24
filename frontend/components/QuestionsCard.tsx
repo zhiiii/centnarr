@@ -44,7 +44,7 @@ export function QuestionsCard({ questions }: Props) {
         return (
           <div
             key={q.id || idx}
-            className="rounded-lg p-3.5"
+            className="rounded-lg p-3.5 question-fade-in"
             style={{
               background: 'var(--bg-surface-1)',
               border: '1px solid var(--border-hairline)',

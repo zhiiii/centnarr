@@ -10,6 +10,7 @@ import { PrdViewer } from '@/components/PrdViewer';
 import { QuestionsCard } from '@/components/QuestionsCard';
 import { sanitizeAiText } from '@/lib/ai_text';
 import { useVoiceInput } from '@/hooks/useVoiceInput';
+import { useTypewriter } from '@/hooks/useTypewriter';
 
 const STREAM_TIMEOUT_MS = 90_000;
 
@@ -608,7 +609,7 @@ export default function ConversationPage({ params }: { params: Promise<{ id: str
           )}
 
           {streamingQuestions.length > 0 && (
-            <QuestionsCard questions={streamingQuestions} />
+            <StaggeredQuestions questions={streamingQuestions} />
           )}
 
           {streamingQuestions.length === 0 && latestQuestions.length > 0 && conv.state !== 'confirming' && !streaming && (
@@ -997,6 +998,8 @@ function StreamingBubble({
   subState?: string;
   summary?: string | null;
 }) {
+  const typedContent = useTypewriter(content, 22);
+  const typedSummary = useTypewriter(summary ?? '', 22);
   return (
     <div className="flex gap-3 justify-start">
       <div
@@ -1028,29 +1031,29 @@ function StreamingBubble({
           </div>
         ) : (
           <div>
-            {!content && !summary && subState && subState !== 'done' && (
+            {!typedContent && !typedSummary && subState && subState !== 'done' && (
               <div className="text-[12.5px] flex items-center gap-2" style={{ color: 'var(--text-muted)' }}>
                 <span className="typing-cursor">▍</span>
                 <span>{streamSubStateLabel(subState)}</span>
               </div>
             )}
-            {summary && (
+            {typedSummary && (
               <div>
-                {summary}
-                {content && (
+                {typedSummary}
+                {typedContent && (
                   <>
                     {'\n\n'}
                     <span>
-                      {content}
+                      {typedContent}
                       <span className="typing-cursor" style={{ marginLeft: 2 }}>▍</span>
                     </span>
                   </>
                 )}
               </div>
             )}
-            {!summary && content && (
+            {!typedSummary && typedContent && (
               <span>
-                {content}
+                {typedContent}
                 <span className="typing-cursor" style={{ marginLeft: 2 }}>▍</span>
               </span>
             )}
@@ -1059,4 +1062,32 @@ function StreamingBubble({
       </div>
     </div>
   );
+}
+
+function StaggeredQuestions({ questions }: { questions: QuestionItem[] }) {
+  const [visibleCount, setVisibleCount] = useState(0);
+  const firstShownRef = useRef(false);
+
+  useEffect(() => {
+    firstShownRef.current = false;
+    if (questions.length === 0) {
+      setVisibleCount(0);
+      return;
+    }
+    setVisibleCount(0);
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    timers.push(
+      setTimeout(() => {
+        setVisibleCount(1);
+        firstShownRef.current = true;
+      }, 80)
+    );
+    for (let i = 1; i < questions.length; i++) {
+      timers.push(setTimeout(() => setVisibleCount(i + 1), 80 + i * 450));
+    }
+    return () => timers.forEach(clearTimeout);
+  }, [questions]);
+
+  if (visibleCount === 0) return null;
+  return <QuestionsCard questions={questions.slice(0, visibleCount)} />;
 }

@@ -15,10 +15,18 @@ interface PrdItem {
 
 interface RequirementItem {
   id: string;
+  conversation_id: string;
   title: string;
   status: string;
   updated_at: string;
   prd_count: number;
+  scene?: string | null;
+  background?: string | null;
+  pain_point_count?: number;
+  kind?: 'requirement' | 'in_progress';
+  completion?: number;
+  round?: number;
+  first_message?: string;
   prds?: Array<{
     id: string;
     version: string;
@@ -40,6 +48,7 @@ interface ProjectData {
   created_at: string;
   updated_at: string;
   requirements: RequirementItem[];
+  in_progress?: RequirementItem[];
 }
 
 export default function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -197,42 +206,169 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
             </button>
           </div>
         ) : (
-          <div className="space-y-3">
-            {data.requirements.map((r) => (
-              <div key={r.id} className="lux-card p-5">
-                <CardCorners />
-                <div className="relative flex items-center justify-between mb-3 gap-3">
-                  <Link
-                    href={`/requirement/${r.id}`}
-                    className="font-display font-semibold text-[15px] truncate flex-1 min-w-0"
-                  >
-                    {r.title}
-                  </Link>
-                  <div className="flex items-center gap-2">
-                    <StatusTag status={r.status} />
-                    <span className="text-[11px] mono" style={{ color: 'var(--text-muted)' }}>
-                      {formatTime(r.updated_at)}
-                    </span>
+          <div className="space-y-6">
+            {data.requirements.length > 0 && (
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="text-[12px] uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+                    已签收需求 · {data.requirements.length}
                   </div>
                 </div>
-                {r.prd_count > 0 ? (
-                  <PrdList
-                    requirementId={r.id}
-                    onLoadPrds={async () => {
-                      const full = await api.getRequirement(r.id);
-                      return full.prds;
-                    }}
-                    onGenerateSpec={handleGenerateSpec}
-                    onViewSpec={handleViewSpec}
-                    generating={generating}
-                  />
-                ) : (
-                  <div className="text-[12px] py-2" style={{ color: 'var(--text-muted)' }}>
-                    该需求尚未生成 PRD
-                  </div>
-                )}
+                <div className="space-y-3">
+                  {data.requirements.map((r) => (
+                    <div key={r.id} className="lux-card p-5">
+                      <CardCorners />
+                      <div className="relative flex items-center justify-between mb-2 gap-3">
+                        <Link
+                          href={`/requirement/${r.id}`}
+                          className="font-display font-semibold text-[15px] truncate flex-1 min-w-0"
+                        >
+                          {r.title}
+                        </Link>
+                        <div className="flex items-center gap-2">
+                          <StatusTag status={r.status} />
+                          <span className="text-[11px] mono" style={{ color: 'var(--text-muted)' }}>
+                            {formatTime(r.updated_at)}
+                          </span>
+                        </div>
+                      </div>
+                      {(r.scene || r.background) && (
+                        <div className="mb-3 space-y-1.5">
+                          {r.scene && (
+                            <div className="flex items-baseline gap-2">
+                              <span
+                                className="text-[10.5px] uppercase tracking-wider flex-shrink-0"
+                                style={{ color: 'var(--text-muted)' }}
+                              >
+                                场景
+                              </span>
+                              <span className="text-[12.5px] leading-[1.5]" style={{ color: 'var(--text-secondary)' }}>
+                                {r.scene}
+                              </span>
+                            </div>
+                          )}
+                          {r.background && (
+                            <div className="flex items-baseline gap-2">
+                              <span
+                                className="text-[10.5px] uppercase tracking-wider flex-shrink-0"
+                                style={{ color: 'var(--text-muted)' }}
+                              >
+                                背景
+                              </span>
+                              <span className="text-[12px] leading-[1.5] line-clamp-2" style={{ color: 'var(--text-secondary)' }}>
+                                {r.background}
+                              </span>
+                            </div>
+                          )}
+                          {(r.pain_point_count ?? 0) > 0 && (
+                            <div className="flex items-center gap-1.5 pt-1">
+                              <span
+                                className="inline-flex items-center px-2 py-0.5 rounded text-[10.5px]"
+                                style={{
+                                  background: 'rgba(235,87,87,0.1)',
+                                  color: 'var(--destructive)',
+                                }}
+                              >
+                                ⚠ {r.pain_point_count} 个痛点
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {r.prd_count > 0 ? (
+                        <PrdList
+                          requirementId={r.id}
+                          onLoadPrds={async () => {
+                            const full = await api.getRequirement(r.id);
+                            return full.prds;
+                          }}
+                          onGenerateSpec={handleGenerateSpec}
+                          onViewSpec={handleViewSpec}
+                          generating={generating}
+                        />
+                      ) : (
+                        <div className="text-[12px] py-1" style={{ color: 'var(--text-muted)' }}>
+                          该需求尚未生成 PRD
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
-            ))}
+            )}
+
+            {data.in_progress && data.in_progress.length > 0 && (
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="text-[12px] uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+                    进行中的对话 · {data.in_progress.length}
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  {data.in_progress.map((c) => (
+                    <Link
+                      key={c.id}
+                      href={`/conversation/${c.id}`}
+                      className="lux-card p-4 block transition-colors"
+                      style={{ borderStyle: 'dashed' }}
+                    >
+                      <CardCorners />
+                      <div className="relative flex items-center justify-between mb-2 gap-3">
+                        <div className="font-display font-semibold text-[14px] truncate flex-1 min-w-0">
+                          {c.title}
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <InProgressTag state={c.status} />
+                          {c.completion !== undefined && c.completion > 0 && (
+                            <span
+                              className="text-[11px] mono"
+                              style={{ color: 'var(--text-muted)' }}
+                            >
+                              完成度 {c.completion}%
+                            </span>
+                          )}
+                          <span className="text-[11px] mono" style={{ color: 'var(--text-muted)' }}>
+                            {formatTime(c.updated_at)}
+                          </span>
+                        </div>
+                      </div>
+                      {c.first_message && (
+                        <div className="text-[12px] leading-[1.5] line-clamp-2" style={{ color: 'var(--text-muted)' }}>
+                          “{c.first_message}”
+                        </div>
+                      )}
+                      <div className="text-[11px] mt-2" style={{ color: 'var(--accent)' }}>
+                        继续对话 →
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {data.requirements.length === 0 && (!data.in_progress || data.in_progress.length === 0) && (
+              <div className="lux-card p-12 text-center">
+                <CardCorners />
+                <div
+                  className="lux-monogram mx-auto mb-3"
+                  style={{ width: 48, height: 48, fontSize: 18 }}
+                >
+                  ◇
+                </div>
+                <div className="text-[14px] mb-2" style={{ color: 'var(--text-secondary)' }}>
+                  该项目下还没有需求
+                </div>
+                <div className="text-[12px] mb-5" style={{ color: 'var(--text-muted)' }}>
+                  点击右上角"新建需求"，所有产生的 PRD 会自动归到这个项目下
+                </div>
+                <button
+                  onClick={() => router.push(`/?project_id=${data.id}`)}
+                  className="btn btn-primary"
+                >
+                  新建第一个需求
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -396,6 +532,40 @@ function StatusTag({ status }: { status: string }) {
   };
   const v = m[status] || { label: status, cls: '' };
   return <span className={`tag ${v.cls}`}>{v.label}</span>;
+}
+
+function InProgressTag({ state }: { state: string }) {
+  const m: Record<string, { label: string; cls: string; pulse?: boolean }> = {
+    asking: { label: '对话中', cls: 'tag', pulse: true },
+    answering: { label: 'AI 思考中', cls: 'tag', pulse: true },
+    integrating: { label: '整理中', cls: 'tag', pulse: true },
+    scene_identifying: { label: '识别场景', cls: 'tag', pulse: true },
+    confirming: { label: '待签收', cls: 'tag-warning' },
+    completed: { label: '已结束', cls: '' },
+    idle: { label: '空闲', cls: '' },
+  };
+  const v = m[state] || { label: state, cls: 'tag' };
+  return (
+    <span
+      className={`tag ${v.cls}`}
+      style={
+        v.pulse
+          ? {
+              background: 'rgba(94, 106, 210, 0.12)',
+              color: 'var(--accent)',
+            }
+          : undefined
+      }
+    >
+      {v.pulse && (
+        <span
+          className="inline-block w-1.5 h-1.5 rounded-full mr-1.5 voice-pulse"
+          style={{ background: 'var(--accent)' }}
+        />
+      )}
+      {v.label}
+    </span>
+  );
 }
 
 function formatTime(iso: string): string {

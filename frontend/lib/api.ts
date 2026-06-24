@@ -373,7 +373,29 @@ export const api = {
       prd_count: number;
       created_at: string;
       updated_at: string;
-      requirements: Array<{ id: string; title: string; status: string; updated_at: string; prd_count: number }>;
+      requirements: Array<{
+        id: string;
+        conversation_id: string;
+        title: string;
+        status: string;
+        updated_at: string;
+        prd_count: number;
+        scene?: string | null;
+        background?: string | null;
+        pain_point_count?: number;
+        kind?: 'requirement' | 'in_progress';
+      }>;
+      in_progress?: Array<{
+        id: string;
+        conversation_id: string;
+        title: string;
+        status: string;
+        updated_at: string;
+        prd_count: number;
+        completion: number;
+        round: number;
+        first_message: string;
+      }>;
     }>(`/api/project/${id}`),
   updateProject: (id: string, patch: { name?: string; description?: string }) =>
     request<{ id: string; name: string }>(`/api/project/${id}`, {

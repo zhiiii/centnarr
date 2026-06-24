@@ -1206,15 +1206,62 @@ async def get_project(project_id: str, db: Session = Depends(get_db)) -> dict:
         raise HTTPException(status_code=404, detail="Project not found")
     req_items: list[dict] = []
     prd_count = 0
+    req_conv_ids = {r.conversation_id for r in p.requirements}
     for r in sorted(p.requirements, key=lambda x: x.updated_at, reverse=True):
         prd_count += len(r.prds)
+        cd = r.confirmed_doc or {}
+        scene = (cd.get("scene") or "").strip()
+        pain_points = cd.get("pain_points") or []
+        background = (cd.get("background") or "").strip()
         req_items.append(
             {
                 "id": r.id,
-                "title": r.conversation.title or (r.confirmed_doc.get("scene") if r.confirmed_doc else "") or "未命名需求",
+                "conversation_id": r.conversation_id,
+                "title": r.conversation.title or scene or "未命名需求",
                 "status": r.status,
                 "updated_at": r.updated_at.isoformat(),
                 "prd_count": len(r.prds),
+                "scene": scene,
+                "background": background[:140],
+                "pain_point_count": len(pain_points),
+                "kind": "requirement",
+            }
+        )
+    in_progress_items: list[dict] = []
+    conv_q = db.query(models.Conversation).filter(models.Conversation.project_id == project_id)
+    if req_conv_ids:
+        conv_q = conv_q.filter(~models.Conversation.id.in_(req_conv_ids))
+    conv_q = conv_q.order_by(models.Conversation.updated_at.desc())
+    for c in conv_q.all():
+        if c.state == "idle":
+            continue
+        title = c.title or "未命名对话"
+        first_msg_row = (
+            db.query(models.Message)
+            .filter_by(conversation_id=c.id, role="user")
+            .order_by(models.Message.created_at.asc())
+            .first()
+        )
+        first_msg = ""
+        if first_msg_row and first_msg_row.content:
+            first_msg = first_msg_row.content
+            if len(first_msg) > 60:
+                first_msg = first_msg[:60] + "…"
+        in_progress_items.append(
+            {
+                "id": c.id,
+                "conversation_id": c.id,
+                "title": title,
+                "status": c.state,
+                "updated_at": c.updated_at.isoformat(),
+                "prd_count": 0,
+                "scene": None,
+                "background": None,
+                "pain_point_count": 0,
+                "kind": "in_progress",
+                "completion": c.completion,
+                "round": c.current_round,
+                "first_message": first_msg,
             }
         )
     return ProjectDetailResponse(
@@ -1226,7 +1273,7 @@ async def get_project(project_id: str, db: Session = Depends(get_db)) -> dict:
         created_at=p.created_at.isoformat(),
         updated_at=p.updated_at.isoformat(),
         requirements=req_items,
-    ).model_dump()
+    ).model_dump() | {"in_progress": in_progress_items}
 
 
 @router.patch("/project/{project_id}", response_model=ProjectResponse)

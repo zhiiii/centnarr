@@ -309,7 +309,35 @@ async def post_message_stream(req: MessageRequest, request: Request, db: Session
 
     async def event_generator():
         try:
+            from app.services.intent_check import check_relevance, build_refusal_message
+
             yield _sse_state("answering")
+
+            intent = check_relevance(
+                req.content,
+                context_summary=conv.title or "",
+                recent_user_messages=[],
+            )
+            if not intent.relevant:
+                refusal = build_refusal_message(intent.reason, conv.title or "")
+                _save_message(
+                    db, conv, role="assistant", content=refusal, meta={"intent_refusal": True},
+                )
+                from sqlalchemy import update as sa_update
+                db.execute(
+                    sa_update(models.Conversation)
+                    .where(models.Conversation.id == conv.id)
+                    .values(state="asking")
+                )
+                db.commit()
+                yield _sse_event({
+                    "type": "intent_refusal",
+                    "message": refusal,
+                    "reason": intent.reason,
+                    "confidence": intent.confidence,
+                })
+                yield _sse_done({"state": "asking", "intent_refused": True})
+                return
             yield _sse_state("integrating")
 
             # 并行启动 scene_identification 和 stream_question_text
@@ -558,11 +586,56 @@ async def post_respond_stream(req: RespondRequest, request: Request, db: Session
     last_questions = (last_assistant.meta or {}).get("questions", []) if last_assistant else []
     is_async = req.is_async_supplement or ai_engine.detect_async_supplement(req.content)
 
+    recent_user_msgs = [
+        m.content for m in (
+            db.query(models.Message)
+            .filter_by(conversation_id=conv.id, role="user")
+            .order_by(models.Message.created_at.desc())
+            .limit(3)
+        )
+    ]
+
     conv_id = conv.id
 
     async def event_generator():
         try:
+            from app.services.intent_check import check_relevance, build_refusal_message
+
             yield _sse_state("answering")
+
+            context_summary = conv.title or ""
+            if previous_doc:
+                scene = (previous_doc.get("scene") or "").strip()
+                if scene:
+                    context_summary = f"{context_summary} {scene}" if context_summary else scene
+                bg = (previous_doc.get("background") or "").strip()
+                if bg:
+                    context_summary = f"{context_summary} {bg}" if context_summary else bg
+
+            intent = check_relevance(
+                req.content,
+                context_summary=context_summary,
+                recent_user_messages=recent_user_msgs[:-1],
+            )
+            if not intent.relevant:
+                refusal = build_refusal_message(intent.reason, conv.title or "")
+                _save_message(
+                    db, conv, role="assistant", content=refusal, meta={"intent_refusal": True},
+                )
+                db.execute(
+                    sa_update(models.Conversation)
+                    .where(models.Conversation.id == conv.id)
+                    .values(state="asking")
+                )
+                db.commit()
+                yield _sse_event({
+                    "type": "intent_refusal",
+                    "message": refusal,
+                    "reason": intent.reason,
+                    "confidence": intent.confidence,
+                })
+                yield _sse_done({"state": "asking", "intent_refused": True})
+                return
 
             ai_text_parts: list[str] = []
             integration_event: dict = {}

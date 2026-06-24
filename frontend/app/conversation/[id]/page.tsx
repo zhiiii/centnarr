@@ -276,6 +276,11 @@ export default function ConversationPage({ params }: { params: Promise<{ id: str
           setStreaming((prev) =>
             prev ? { ...prev, error: ev.message || '未知错误' } : prev,
           );
+        } else if (ev.type === 'intent_refusal') {
+          const refusalMsg = (ev.message as string) || '你说的跟当前需求关联不大, 请回到需求本身';
+          setStreaming((prev) =>
+            prev ? { ...prev, content: refusalMsg } : prev,
+          );
         } else if (ev.type === 'done') {
           setStreaming(null);
           setStreamState(null);

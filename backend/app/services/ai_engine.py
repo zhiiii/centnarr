@@ -187,6 +187,9 @@ async def call_info_integration(
     if not updated_doc:
         updated_doc = _empty_doc()
 
+    from app.services.signal_extractor import enrich_doc_tags
+    updated_doc = enrich_doc_tags(updated_doc, new_input)
+
     summary = raw.get("user_facing_summary") or "我把你说的都记下来了，咱们继续。"
     completion = int(raw.get("completion_percentage") or calc_completion(updated_doc))
     should_continue = bool(raw.get("should_continue", True))
@@ -249,9 +252,12 @@ def fallback_integration(previous_doc: dict, new_input: str) -> dict:
         pain_points = list(updated.get("pain_points") or [])
         if not pain_points:
             pain_points.append(
-                {"description": new_input[:80], "frequency": "未知", "severity": "严重"}
+                {"description": new_input[:80], "frequency": None, "severity": None}
             )
         updated["pain_points"] = pain_points
+
+    from app.services.signal_extractor import enrich_doc_tags
+    updated = enrich_doc_tags(updated, new_input)
 
     completion = calc_completion(updated)
     return {
@@ -435,7 +441,7 @@ async def stream_summary_text(
     user = user + "\n\n" + INTEGRATION_STREAM_INSTRUCTION
 
     proto = stream_protocol_lib.StreamProtocol(
-        make_event=lambda parsed: _integration_event_from_parsed(parsed, previous_doc),
+        make_event=lambda parsed: _integration_event_from_parsed(parsed, previous_doc, new_input),
         flush_final=lambda r: (
             {"type": "delta", "content": r} if r.strip() and not r.strip().startswith("```") else None
         ),
@@ -453,11 +459,14 @@ async def stream_summary_text(
         yield {"type": "error", "message": f"信息整合失败：{_truncate(str(e))}"}
 
 
-def _integration_event_from_parsed(parsed: dict, previous_doc: dict) -> dict:
+def _integration_event_from_parsed(parsed: dict, previous_doc: dict, user_input: str = "") -> dict:
     delta = parsed.get("delta") or {}
     updated_doc = parsed.get("updated_doc") or previous_doc
     if not updated_doc:
         updated_doc = _empty_doc()
+
+    from app.services.signal_extractor import enrich_doc_tags
+    updated_doc = enrich_doc_tags(updated_doc, user_input)
 
     summary = parsed.get("user_facing_summary") or "我把你说的都记下来了，咱们继续。"
     completion = int(parsed.get("completion_percentage") or calc_completion(updated_doc))

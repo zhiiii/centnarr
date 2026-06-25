@@ -122,34 +122,66 @@ export function DocPanel({
           <Empty>（等待识别）</Empty>
         ) : (
           <div className="flex flex-wrap gap-2">
-            {displayDoc.roles.map((r, i) => (
-              <div
-                key={i}
-                className="px-3 py-2 rounded-md text-[12.5px] min-w-[140px]"
-                style={{ background: 'var(--bg-surface-2)', border: '1px solid var(--border-hairline)' }}
-              >
-                <div className="font-medium mb-0.5 flex items-center gap-1">
-                  <EditableField
-                    value={r.name || ''}
-                    onSave={(v) => saveField(`roles[${i}].name`, v)}
-                    saving={savingPath === `roles[${i}].name`}
-                    error={fieldErrors[`roles[${i}].name`]}
-                    placeholder="（角色名）"
-                  />
-                  <DeltaTag kind={tagMap.get(`roles[${i}].name`)} />
+            {displayDoc.roles.map((r, i) => {
+              const conf = r.confidence;
+              const confEvidence = r.evidence?.confidence;
+              const confColor =
+                conf === 'high'
+                  ? 'var(--success)'
+                  : conf === 'medium'
+                  ? 'var(--warning)'
+                  : conf === 'low'
+                  ? 'var(--text-muted)'
+                  : 'var(--text-muted)';
+              const confLabel =
+                conf === 'high' ? '高置信' : conf === 'medium' ? '中置信' : conf === 'low' ? '低置信' : '未识别';
+              return (
+                <div
+                  key={i}
+                  className="px-3 py-2 rounded-md text-[12.5px] min-w-[160px]"
+                  style={{ background: 'var(--bg-surface-2)', border: '1px solid var(--border-hairline)' }}
+                >
+                  <div className="font-medium mb-0.5 flex items-center gap-1.5 flex-wrap">
+                    <EditableField
+                      value={r.name || ''}
+                      onSave={(v) => saveField(`roles[${i}].name`, v)}
+                      saving={savingPath === `roles[${i}].name`}
+                      error={fieldErrors[`roles[${i}].name`]}
+                      placeholder="（角色名）"
+                    />
+                    <span
+                      className="text-[9.5px] px-1.5 py-0.5 rounded"
+                      style={{
+                        background:
+                          conf === 'high'
+                            ? 'rgba(76, 183, 130, 0.12)'
+                            : conf === 'medium'
+                            ? 'rgba(242, 201, 76, 0.12)'
+                            : 'var(--bg-surface-3)',
+                        color: confColor,
+                      }}
+                      title={confEvidence ? `从「${confEvidence}」识别` : '用户没明确提到, AI 推断'}
+                    >
+                      {confLabel}
+                      {confEvidence && (
+                        <span style={{ marginLeft: 4, opacity: 0.8 }}>·「{confEvidence}」</span>
+                      )}
+                    </span>
+                    <DeltaTag kind={tagMap.get(`roles[${i}].name`)} />
+                  </div>
+                  <div className="text-[11.5px] flex items-center gap-1" style={{ color: 'var(--text-secondary)' }}>
+                    <EditableField
+                      value={r.responsibility || ''}
+                      onSave={(v) => saveField(`roles[${i}].responsibility`, v)}
+                      saving={savingPath === `roles[${i}].responsibility`}
+                      error={fieldErrors[`roles[${i}].responsibility`]}
+                      placeholder="（职责）"
+                    />
+                    <DeltaTag kind={tagMap.get(`roles[${i}].responsibility`)} />
+                  </div>
                 </div>
-                <div className="text-[11.5px] flex items-center gap-1" style={{ color: 'var(--text-secondary)' }}>
-                  <EditableField
-                    value={r.responsibility || ''}
-                    onSave={(v) => saveField(`roles[${i}].responsibility`, v)}
-                    saving={savingPath === `roles[${i}].responsibility`}
-                    error={fieldErrors[`roles[${i}].responsibility`]}
-                    placeholder="（职责）"
-                  />
-                  <DeltaTag kind={tagMap.get(`roles[${i}].responsibility`)} />
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -179,27 +211,28 @@ export function DocPanel({
                       placeholder="（痛点描述）"
                     />
                   </div>
-                  <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                    <EditableField
-                      value={p.frequency || ''}
-                      compact
+                  <div className="flex items-center gap-1.5 mt-1 flex-wrap items-baseline">
+                    <TagEditor
+                      label="频次"
+                      value={p.frequency ?? ''}
+                      evidence={p.evidence?.frequency}
                       onSave={(v) => saveField(`pain_points[${i}].frequency`, v)}
                       saving={savingPath === `pain_points[${i}].frequency`}
                       error={fieldErrors[`pain_points[${i}].frequency`]}
-                      placeholder="频次"
+                      options={['高频', '中频', '低频']}
+                      emptyText="待识别"
                     />
-                    <EditableField
-                      value={p.severity || ''}
-                      compact
-                      tone="warning"
+                    <TagEditor
+                      label="严重度"
+                      value={p.severity ?? ''}
+                      evidence={p.evidence?.severity}
                       onSave={(v) => saveField(`pain_points[${i}].severity`, v)}
                       saving={savingPath === `pain_points[${i}].severity`}
                       error={fieldErrors[`pain_points[${i}].severity`]}
-                      placeholder="严重度"
+                      options={['严重', '一般', '轻微']}
+                      emptyText="待识别"
+                      tone="warning"
                     />
-                    <DeltaTag kind={tagMap.get(`pain_points[${i}].description`)} />
-                    <DeltaTag kind={tagMap.get(`pain_points[${i}].frequency`)} />
-                    <DeltaTag kind={tagMap.get(`pain_points[${i}].severity`)} />
                   </div>
                 </div>
               </li>
@@ -216,30 +249,83 @@ export function DocPanel({
           <Empty>（等待识别）</Empty>
         ) : (
           <ul className="space-y-1.5">
-            {displayDoc.expected_outcomes.map((e, i) => (
-              <li key={i} className="flex items-start gap-2 text-[13px]">
-                <span
-                  className="w-1 h-1 rounded-full mt-2 flex-shrink-0"
-                  style={{ background: 'var(--success)' }}
-                />
-                <div className="flex-1 min-w-0">
-                  <span style={{ color: 'var(--text-primary)' }}>
-                    <EditableField
-                      value={e.description || ''}
-                      multiline
-                      onSave={(v) => saveField(`expected_outcomes[${i}].description`, v)}
-                      saving={savingPath === `expected_outcomes[${i}].description`}
-                      error={fieldErrors[`expected_outcomes[${i}].description`]}
-                      placeholder="（期望效果）"
-                    />
-                  </span>
-                  {e.explicit === false && (
-                    <span className="tag tag-warning ml-2">⚠ 待确认</span>
-                  )}
-                  <DeltaTag kind={tagMap.get(`expected_outcomes[${i}].description`)} />
-                </div>
-              </li>
-            ))}
+            {displayDoc.expected_outcomes.map((e, i) => {
+              const explicitVal = e.explicit;
+              const explicitEvidence = e.evidence?.explicit;
+              return (
+                <li key={i} className="flex items-start gap-2 text-[13px]">
+                  <span
+                    className="w-1 h-1 rounded-full mt-2 flex-shrink-0"
+                    style={{ background: 'var(--success)' }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <span style={{ color: 'var(--text-primary)' }}>
+                      <EditableField
+                        value={e.description || ''}
+                        multiline
+                        onSave={(v) => saveField(`expected_outcomes[${i}].description`, v)}
+                        saving={savingPath === `expected_outcomes[${i}].description`}
+                        error={fieldErrors[`expected_outcomes[${i}].description`]}
+                        placeholder="（期望效果）"
+                      />
+                    </span>
+                    <div className="flex items-center gap-1.5 mt-1 flex-wrap items-baseline">
+                      <span
+                        className="text-[10.5px] uppercase tracking-wider"
+                        style={{ color: 'var(--text-muted)' }}
+                      >
+                        期望来源
+                      </span>
+                      {explicitVal === true && (
+                        <span
+                          className="inline-flex items-center gap-1 text-[11px]"
+                          style={{ color: 'var(--success)' }}
+                          title={explicitEvidence ? `从「${explicitEvidence}」识别` : '用户明确表达'}
+                        >
+                          <span style={{ fontWeight: 600 }}>✓ 明确</span>
+                          {explicitEvidence && (
+                            <span
+                              className="text-[10px] px-1.5 py-0.5 rounded"
+                              style={{
+                                background: 'rgba(76, 183, 130, 0.12)',
+                                color: 'var(--text-secondary)',
+                              }}
+                            >
+                              识别自「{explicitEvidence}」
+                            </span>
+                          )}
+                        </span>
+                      )}
+                      {explicitVal === false && (
+                        <span
+                          className="inline-flex items-center gap-1 text-[11px]"
+                          style={{ color: 'var(--warning)' }}
+                          title={explicitEvidence ? `从「${explicitEvidence}」识别` : '用户含糊或 AI 推断'}
+                        >
+                          <span style={{ fontWeight: 600 }}>⚠ 待确认</span>
+                          {explicitEvidence && (
+                            <span
+                              className="text-[10px] px-1.5 py-0.5 rounded"
+                              style={{
+                                background: 'rgba(242, 201, 76, 0.12)',
+                                color: 'var(--text-secondary)',
+                              }}
+                            >
+                              识别自「{explicitEvidence}」
+                            </span>
+                          )}
+                        </span>
+                      )}
+                      {explicitVal === null && (
+                        <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                          待识别
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
@@ -473,6 +559,123 @@ function DeltaTag({ kind }: { kind?: DeltaKind }) {
   if (kind === 'confirmed') return <span className="tag tag-success">✓确认</span>;
   if (kind === 'edited') return <span className="tag tag-accent">✏️编辑</span>;
   return null;
+}
+
+interface TagEditorProps {
+  label: string;
+  value: string;
+  evidence?: string | null;
+  onSave: (value: string) => Promise<void> | void;
+  saving: boolean;
+  error?: string;
+  options: string[];
+  emptyText?: string;
+  tone?: 'default' | 'warning';
+}
+
+function TagEditor({ label, value, evidence, onSave, saving, error, options, emptyText = '待识别', tone = 'default' }: TagEditorProps) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
+
+  const isEmpty = !value;
+
+  const commit = async () => {
+    if (draft === value) {
+      setEditing(false);
+      return;
+    }
+    try {
+      await onSave(draft);
+      setEditing(false);
+    } catch {
+    }
+  };
+
+  const labelColor = tone === 'warning' ? 'var(--warning)' : 'var(--text-muted)';
+
+  return (
+    <span className="inline-flex items-baseline gap-1.5 text-[11px]">
+      <span
+        className="text-[10.5px] uppercase tracking-wider"
+        style={{ color: labelColor }}
+      >
+        {label}
+      </span>
+      {editing ? (
+        <span className="inline-flex items-center gap-1">
+          <select
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                commit();
+              } else if (e.key === 'Escape') {
+                setDraft(value);
+                setEditing(false);
+              }
+            }}
+            autoFocus
+            disabled={saving}
+            className="text-[11px] px-1.5 py-0.5 rounded"
+            style={{
+              background: 'var(--bg-surface-3)',
+              color: 'var(--text-primary)',
+              border: '1px solid var(--accent)',
+              cursor: 'pointer',
+              minWidth: 64,
+            }}
+          >
+            <option value="">（未识别）</option>
+            {options.map((opt) => (
+              <option key={opt} value={opt}>
+                {opt}
+              </option>
+            ))}
+          </select>
+        </span>
+      ) : (
+        <span
+          className="inline-flex items-center gap-1 group cursor-pointer"
+          onClick={() => setEditing(true)}
+          title={evidence ? `点击修改 · 当前从「${evidence}」识别` : '点击修改'}
+        >
+          {isEmpty ? (
+            <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>{emptyText}</span>
+          ) : (
+            <span
+              className="px-1.5 py-0.5 rounded text-[11px] font-medium"
+              style={{
+                background: tone === 'warning' ? 'rgba(242, 201, 76, 0.12)' : 'var(--bg-surface-3)',
+                color: tone === 'warning' ? 'var(--warning)' : 'var(--text-primary)',
+                border: tone === 'warning' ? '1px solid rgba(242, 201, 76, 0.3)' : '1px solid var(--border-hairline)',
+              }}
+            >
+              {value}
+            </span>
+          )}
+          {evidence && (
+            <span
+              className="text-[10px] px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+              style={{
+                background: 'var(--bg-surface-2)',
+                color: 'var(--text-secondary)',
+                border: '1px solid var(--border-hairline)',
+              }}
+            >
+              识别自「{evidence}」
+            </span>
+          )}
+        </span>
+      )}
+      {error && <span style={{ color: 'var(--destructive)' }} className="text-[10px]">{error}</span>}
+    </span>
+  );
 }
 
 interface EditableFieldProps {

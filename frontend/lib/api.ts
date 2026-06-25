@@ -99,9 +99,18 @@ export interface QuestionItem {
 
 export interface SceneAnalysis {
   scene: string;
-  roles: Array<{ name: string; responsibility?: string; confidence?: string }>;
-  pain_points: Array<{ description: string; frequency?: string; severity?: string }>;
-  expected_outcomes: Array<{ description: string; explicit?: boolean }>;
+  roles: Array<{ name: string; responsibility?: string; confidence?: string | null; evidence?: { confidence?: string | null } }>;
+  pain_points: Array<{
+    description: string;
+    frequency?: string | null;
+    severity?: string | null;
+    evidence?: { frequency?: string | null; severity?: string | null };
+  }>;
+  expected_outcomes: Array<{
+    description: string;
+    explicit?: boolean | null;
+    evidence?: { explicit?: string | null };
+  }>;
   emotional_signal?: string;
   urgency?: string;
   summary?: string;
@@ -115,9 +124,23 @@ export interface QuestionGeneration {
 export interface DocView {
   scene: string;
   background: string;
-  roles: Array<{ name: string; responsibility?: string; confidence?: string }>;
-  pain_points: Array<{ description: string; frequency?: string; severity?: string }>;
-  expected_outcomes: Array<{ description: string; explicit?: boolean }>;
+  roles: Array<{
+    name: string;
+    responsibility?: string;
+    confidence?: string | null;
+    evidence?: { confidence?: string | null };
+  }>;
+  pain_points: Array<{
+    description: string;
+    frequency?: string | null;
+    severity?: string | null;
+    evidence?: { frequency?: string | null; severity?: string | null };
+  }>;
+  expected_outcomes: Array<{
+    description: string;
+    explicit?: boolean | null;
+    evidence?: { explicit?: string | null };
+  }>;
   key_scenarios: Array<{ description: string; example?: string }>;
   to_confirm: string[];
 }

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { Corner } from '@/components/Corner';
+import { useDialog } from '@/components/DialogProvider';
 
 interface PrdItem {
   prd_id: string;
@@ -54,6 +55,7 @@ interface ProjectData {
 export default function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
+  const dialog = useDialog();
   const [data, setData] = useState<ProjectData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -75,12 +77,20 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
 
   const handleDeleteProject = async () => {
     if (!data) return;
-    if (!window.confirm(`确认删除项目「${data.name}」？`)) return;
+    const ok = await dialog.confirm({
+      title: `删除项目「${data.name}」?`,
+      description: '此项目下的所有需求、PRD、Spec 和对话记录都会被删除,无法撤销。',
+      confirmText: '永久删除',
+      cancelText: '取消',
+      variant: 'danger',
+    });
+    if (!ok) return;
     try {
       await api.deleteProject(data.id);
+      dialog.toast({ message: '项目已删除', variant: 'success' });
       router.push('/projects');
     } catch (e) {
-      window.alert((e as Error).message || '删除失败');
+      dialog.alert({ title: '删除失败', description: (e as Error).message || '请稍后重试', variant: 'danger' });
     }
   };
 
@@ -90,8 +100,9 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
       const res = await api.generateSpec(prdId);
       setSpecViewer({ prd_id: res.prd_id, content: res.spec_content, version: res.spec_version });
       load();
+      dialog.toast({ message: 'Spec 已生成', variant: 'success' });
     } catch (e) {
-      window.alert((e as Error).message || '生成失败');
+      dialog.alert({ title: '生成失败', description: (e as Error).message || '请稍后重试', variant: 'danger' });
     } finally {
       setGenerating((s) => ({ ...s, [prdId]: false }));
     }

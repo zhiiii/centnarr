@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api, DocView, MessageTurn } from '@/lib/api';
 import { PrdViewer } from '@/components/PrdViewer';
+import { useDialog } from '@/components/DialogProvider';
 
 interface RequirementData {
   id: string;
@@ -30,6 +31,7 @@ interface RequirementData {
 export default function RequirementPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
+  const dialog = useDialog();
   const [data, setData] = useState<RequirementData | null>(null);
   const [messages, setMessages] = useState<MessageTurn[]>([]);
   const [loading, setLoading] = useState(true);
@@ -99,7 +101,15 @@ export default function RequirementPage({ params }: { params: Promise<{ id: stri
 
   const toggleArchive = async () => {
     if (!data) return;
-    const ok = window.confirm(isArchived ? '确认取消归档？' : '确认归档此需求？归档后默认筛选中不会显示。');
+    const ok = await dialog.confirm({
+      title: isArchived ? '取消归档' : '归档需求',
+      description: isArchived
+        ? '取消归档后, 此需求会重新出现在默认筛选中。'
+        : '归档后, 此需求在需求列表的默认筛选中不再显示。可在筛选条件中勾选「已归档」查看。',
+      confirmText: isArchived ? '取消归档' : '归档',
+      cancelText: '再想想',
+      variant: 'info',
+    });
     if (!ok) return;
     try {
       if (isArchived) {
@@ -108,24 +118,32 @@ export default function RequirementPage({ params }: { params: Promise<{ id: stri
         await api.archiveRequirement(data.id);
       }
       refresh();
+      dialog.toast({ message: isArchived ? '已取消归档' : '需求已归档', variant: 'success' });
     } catch (e) {
-      window.alert((e as Error).message || '操作失败');
+      dialog.alert({ title: '操作失败', description: (e as Error).message || '请稍后重试', variant: 'danger' });
     }
   };
 
   const handleDelete = async () => {
     if (!data) return;
     const prdCount = data.prds?.length ?? 0;
-    const msg = prdCount > 0
-      ? `确认删除此需求？\n\n将一并删除 ${prdCount} 份 PRD 和 Spec，对话记录保留但不再关联此需求。此操作不可撤销。`
-      : '确认删除此需求？对话记录保留但不再关联此需求。此操作不可撤销。';
-    const ok = window.confirm(msg);
+    const description = prdCount > 0
+      ? `将一并删除 ${prdCount} 份 PRD 和 Spec, 对话记录保留但不再关联此需求。\n\n此操作不可撤销。`
+      : '对话记录保留但不再关联此需求。\n\n此操作不可撤销。';
+    const ok = await dialog.confirm({
+      title: '删除此需求?',
+      description,
+      confirmText: '永久删除',
+      cancelText: '取消',
+      variant: 'danger',
+    });
     if (!ok) return;
     try {
       await api.deleteRequirement(data.id);
+      dialog.toast({ message: '需求已删除', variant: 'success' });
       router.push(backHref);
     } catch (e) {
-      window.alert((e as Error).message || '删除失败');
+      dialog.alert({ title: '删除失败', description: (e as Error).message || '请稍后重试', variant: 'danger' });
     }
   };
 
@@ -136,8 +154,9 @@ export default function RequirementPage({ params }: { params: Promise<{ id: stri
       const res = await api.generateSpec(prd.id);
       setSpecViewer({ content: res.spec_content, version: res.spec_version });
       refresh();
+      dialog.toast({ message: 'Spec 已生成', variant: 'success' });
     } catch (e) {
-      window.alert((e as Error).message || 'Spec 生成失败');
+      dialog.alert({ title: 'Spec 生成失败', description: (e as Error).message || '请稍后重试', variant: 'danger' });
     } finally {
       setGeneratingSpec(false);
     }

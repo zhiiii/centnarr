@@ -2,6 +2,7 @@ import './globals.css';
 import type { Metadata } from 'next';
 import { TopNav } from '@/components/TopNav';
 import { ThemeScript } from '@/components/ThemeScript';
+import { Providers } from '@/components/Providers';
 
 export const metadata: Metadata = {
   title: '百叙成章 · 需求文档 AI 协作系统',
@@ -15,8 +16,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ThemeScript />
       </head>
       <body>
-        <TopNav />
-        <main className="pt-12 min-h-screen">{children}</main>
+        <Providers>
+          <TopNav />
+          <main className="pt-12 min-h-screen">{children}</main>
+        </Providers>
       </body>
     </html>
   );

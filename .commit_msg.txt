@@ -1,0 +1,81 @@
+feat(ui): 替换所有浏览器自带弹窗为自定义 Dialog + Toast
+
+# 问题
+原代码用 window.confirm / window.alert 做提示和确认,样式不可控,
+跟 lux-card 暗色设计语言割裂 (浏览器弹窗白底/亮色),也阻塞 UI。
+
+# 解决方案
+新建 3 个组件,围绕现有 Linear 风格设计系统打造一致的弹窗体验。
+
+## 1. components/Modal.tsx (基础弹窗容器)
+- lux-card 风格容器,带 Corner 装饰
+- 半透明背景 + 4px backdrop-filter blur
+- 按 Esc 关闭、点背景关闭 (可配置)
+- body overflow:hidden 防滚动穿透
+- maxWidth 默认 440px,子组件可自定义
+
+## 2. components/DialogProvider.tsx (Dialog + Toast 状态管理)
+- React Context + Provider 模式
+- useDialog() hook 返回 { confirm, alert, toast }
+- 三个 API 全部 Promise 化,可 await
+- 支持字符串快捷调用:`confirm('确定删除?')` 或完整对象:`confirm({ title, description, variant, ... })`
+- 4 种 variant: info (蓝紫) / warning (黄) / danger (红) / success (绿)
+- 每种 variant 对应不同图标 + 主按钮样式
+- Toast 队列管理 + 自动消失 (默认 3.2s)
+- 一次只显示一个 Dialog,避免多个叠加
+
+### Dialog 视觉
+- 顶部: 圆角图标 + 标题 + 描述
+- 底部 footer: bg-surface-2 背景,与正文分隔
+- 取消按钮 ghost 风格,确认按钮根据 variant 着色 (danger 用 btn-danger)
+- 主按钮 autoFocus,按 Enter 直接确认
+
+### Toast 视觉
+- 右上角垂直堆叠 (top: 72, right: 24, gap: 8)
+- 左侧色点表示 variant (蓝紫/绿/黄/红)
+- 240ms 弹性曲线 slide-in
+- 自动消失
+
+## 3. components/Providers.tsx + app/layout.tsx
+- 顶层 Providers 包装 DialogProvider
+- 整个 app 任何组件都能 useDialog()
+
+## 4. app/globals.css
+新增 3 套动画 + 样式:
+- @keyframes modal-backdrop-in: 背景淡入 + blur 0→4px
+- @keyframes modal-panel-in: 280ms cubic-bezier(0.16, 1, 0.3, 1) 弹性 scale
+- @keyframes toast-in: 从右侧滑入 + 微缩放
+- .modal-backdrop: 半透明黑 + blur
+- .modal-panel: 24px offset shadow
+- .toast: 12px offset shadow
+- [data-theme='light'] 兼容浅色主题
+
+# 替换的 8 处弹窗
+
+## app/requirement/[id]/page.tsx
+- toggleArchive: confirm + toast 成功提示 + alert 失败提示
+- handleDelete: confirm (danger variant) + toast + alert
+- handleGenerateSpec: toast 成功 + alert 失败
+
+## app/project/[id]/page.tsx
+- handleDeleteProject: confirm (danger variant,含项目名) + toast + alert
+- handleGenerateSpec: toast + alert
+
+# 设计语言一致性
+- 复用 --bg-surface-1/2/3 + --border-hairline + --accent/destructive/warning/success
+- 复用 .btn / .btn-primary / .btn-ghost / .btn-danger (后两者之前已存在,本次用上)
+- 复用 Corner 装饰符号
+- 复用 font-display (标题) + 默认 sans (正文)
+- 复用 8pt 间距系统 (px-6 py-4, gap-2/3)
+
+# 验证
+- tsc --noEmit: 0 错误
+- grep window.alert|confirm|prompt: 全部清除
+- Dialog 按钮 autoFocus, Enter 可确认
+- Esc 可关闭 Dialog
+- Toast 自动消失 3.2s
+
+# 后续可扩展
+- Modal 组件可单独用,以后要做任何自定义弹窗直接 import
+- DialogProvider 可以加 prompt() 输入弹窗,API 形态跟前两个一致
+- Toast 支持更多 variant 和自定义 icon

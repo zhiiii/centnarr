@@ -1153,6 +1153,17 @@ async def unarchive_requirement(requirement_id: str, db: Session = Depends(get_d
     return {"id": req.id, "status": req.status, "updated_at": req.updated_at.isoformat()}
 
 
+@router.delete("/requirement/{requirement_id}")
+async def delete_requirement(requirement_id: str, db: Session = Depends(get_db)) -> dict:
+    req = db.get(models.Requirement, requirement_id)
+    if not req:
+        raise HTTPException(status_code=404, detail="Requirement not found")
+    prd_count = len(req.prds)
+    db.delete(req)
+    db.commit()
+    return {"id": requirement_id, "deleted": True, "prd_count": prd_count}
+
+
 @router.get("/health")
 async def health() -> dict:
     return {"status": "ok", "ts": datetime.utcnow().isoformat()}

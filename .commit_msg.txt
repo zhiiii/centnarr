@@ -1,0 +1,48 @@
+feat(req): 增加删除需求功能
+
+# 后端
+app/api/routes.py 新增 DELETE /api/requirement/{requirement_id}:
+- 硬删除 requirement 行
+- SQLAlchemy ORM 级联 (cascade='all, delete-orphan') 自动删除关联的 PRD
+- Spec 是 PRD 的字段, 跟 PRD 一起删
+- Conversation 保留 (cascade 没设置删 conversation, 它有自己的生命周期)
+- 二次删除返回 404 Requirement not found
+- 返回 {id, deleted: true, prd_count}
+
+# 前端
+## API (lib/api.ts)
+新增 deleteRequirement(id) 包装 DELETE 方法
+
+## 需求详情页 (app/requirement/[id]/page.tsx)
+新增 handleDelete 处理函数:
+- 先读取 data.prds.length 显示具体提示
+- 有 PRD 时: 将一并删除 N 份 PRD 和 Spec
+- 无 PRD 时: 对话记录保留但不再关联此需求
+- 此操作不可撤销
+- 调 api.deleteRequirement
+- 成功后 router.push(backHref) 回到项目页
+
+工具栏新增红色「删除」按钮 (destructive 色):
+- 位置: 归档按钮旁边
+- title: 硬删除此需求及其所有 PRD/Spec
+
+# 行为约定
+- 删除 ≠ 归档: 归档是软删除 (status='archived'), 保留数据; 删除是真删 (行消失)
+- Conv 不删: 对话消息还在, 因为它们独立于 Requirement; 删除后 conv 不再有关联的 req, 但 conv 行本身保留, 可在项目页 in_progress 段看到
+- PRD 级联: 删 req 时 Prd 行的 requirement_id FK 触发 cascade, 一并删掉
+- Spec: 存在 PRD.content 字段的 Markdown 中, 跟 PRD 一起没
+
+# 验证
+- tsc --noEmit: 0 错误
+- pytest: 29/29 passed
+- e2e:
+  * 删无 PRD 的 req → 200, {deleted:true, prd_count:0}, DB req 不存在
+  * 删有 2 个 PRD 的 req → 200, {deleted:true, prd_count:2}, DB req/PRD 全无, conv 还在
+  * 二次删 → 404 Requirement not found
+
+# UI 引导
+确认对话框明示:
+- 将影响多少 PRD
+- 对话记录保留
+- 操作不可撤销
+红色 destructive 色按钮, 区别于 ghost 按钮

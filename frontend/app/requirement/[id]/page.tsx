@@ -113,6 +113,22 @@ export default function RequirementPage({ params }: { params: Promise<{ id: stri
     }
   };
 
+  const handleDelete = async () => {
+    if (!data) return;
+    const prdCount = data.prds?.length ?? 0;
+    const msg = prdCount > 0
+      ? `确认删除此需求？\n\n将一并删除 ${prdCount} 份 PRD 和 Spec，对话记录保留但不再关联此需求。此操作不可撤销。`
+      : '确认删除此需求？对话记录保留但不再关联此需求。此操作不可撤销。';
+    const ok = window.confirm(msg);
+    if (!ok) return;
+    try {
+      await api.deleteRequirement(data.id);
+      router.push(backHref);
+    } catch (e) {
+      window.alert((e as Error).message || '删除失败');
+    }
+  };
+
   const handleGenerateSpec = async () => {
     if (!prd) return;
     setGeneratingSpec(true);
@@ -158,6 +174,14 @@ export default function RequirementPage({ params }: { params: Promise<{ id: stri
           ) : null}
           <button onClick={toggleArchive} className="btn btn-ghost">
             {isArchived ? '取消归档' : '归档'}
+          </button>
+          <button
+            onClick={handleDelete}
+            className="btn btn-ghost"
+            style={{ color: 'var(--destructive)' }}
+            title="硬删除此需求及其所有 PRD/Spec"
+          >
+            删除
           </button>
           <Link
             href={`/conversation/${data.conversation_id}`}

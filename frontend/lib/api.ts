@@ -347,6 +347,10 @@ export const api = {
     request<{ id: string; status: string; updated_at: string }>(`/api/requirement/${id}/unarchive`, {
       method: 'POST',
     }),
+  deleteRequirement: (id: string) =>
+    request<{ id: string; deleted: boolean; prd_count: number }>(`/api/requirement/${id}`, {
+      method: 'DELETE',
+    }),
   listProjects: () =>
     request<
       Array<{

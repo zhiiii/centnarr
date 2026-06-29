@@ -188,6 +188,7 @@ class PrdAcceptanceResponse(BaseModel):
 class ProjectCreateRequest(BaseModel):
     name: str
     description: Optional[str] = None
+    team_id: Optional[str] = None
 
 
 class ProjectUpdateRequest(BaseModel):

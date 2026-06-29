@@ -89,10 +89,12 @@ class Project(Base):
     name: Mapped[str] = mapped_column(String(120))
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     user_id: Mapped[str] = mapped_column(String, default="anonymous")
+    team_id: Mapped[Optional[str]] = mapped_column(String, ForeignKey("teams.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
 
     requirements: Mapped[list["Requirement"]] = relationship(back_populates="project")
+    team: Mapped[Optional["Team"]] = relationship()
 
 
 class Prd(Base):
@@ -110,3 +112,52 @@ class Prd(Base):
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=_now, onupdate=_now)
 
     requirement: Mapped[Requirement] = relationship(back_populates="prds")
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    email: Mapped[str] = mapped_column(String(254), unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(255))
+    display_name: Mapped[str] = mapped_column(String(80))
+    avatar_color: Mapped[str] = mapped_column(String(7), default="#5E6AD2")
+    is_active: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+    last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    owned_teams: Mapped[list["Team"]] = relationship(back_populates="owner")
+    memberships: Mapped[list["TeamMember"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+
+
+class Team(Base):
+    __tablename__ = "teams"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(80))
+    slug: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    owner_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+
+    owner: Mapped[User] = relationship(back_populates="owned_teams")
+    members: Mapped[list["TeamMember"]] = relationship(
+        back_populates="team", cascade="all, delete-orphan"
+    )
+    projects: Mapped[list["Project"]] = relationship(overlaps="team")
+
+
+class TeamMember(Base):
+    __tablename__ = "team_members"
+
+    team_id: Mapped[str] = mapped_column(String, ForeignKey("teams.id"), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"), primary_key=True)
+    role: Mapped[str] = mapped_column(String(20), default="member")
+    joined_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+    team: Mapped[Team] = relationship(back_populates="members")
+    user: Mapped[User] = relationship(back_populates="memberships")

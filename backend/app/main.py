@@ -11,6 +11,8 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.routes import router
+from app.api.auth import router as auth_router
+from app.api.teams import router as teams_router
 from app.core.config import settings
 from app.db.session import init_db, engine
 from app.db.migrations import run_migrations
@@ -44,6 +46,8 @@ app.add_middleware(
 )
 
 app.include_router(router)
+app.include_router(auth_router)
+app.include_router(teams_router)
 
 
 @app.exception_handler(StarletteHTTPException)

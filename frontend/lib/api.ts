@@ -3,6 +3,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://127.0.0.1:8001';
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json', ...(init.headers || {}) },
   });
   if (!res.ok) {
@@ -42,6 +43,7 @@ export async function* streamConversation(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+    credentials: 'include',
     signal,
   });
   if (!res.ok || !res.body) {
@@ -277,7 +279,91 @@ export interface UploadResponse {
   size: number;
 }
 
+export interface UserView {
+  id: string;
+  email: string;
+  display_name: string;
+  avatar_color: string;
+  created_at: string;
+}
+
+export interface TeamMemberView {
+  user_id: string;
+  email: string;
+  display_name: string;
+  avatar_color: string;
+  role: string;
+  joined_at: string;
+}
+
+export interface TeamView {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  owner_id: string;
+  my_role: string;
+  member_count: number;
+  project_count: number;
+  created_at: string;
+  members?: TeamMemberView[];
+}
+
 export const api = {
+  auth: {
+    register: (email: string, password: string, display_name: string) =>
+      request<{ user: UserView }>(`/api/auth/register`, {
+        method: 'POST',
+        body: JSON.stringify({ email, password, display_name }),
+      }),
+    login: (email: string, password: string) =>
+      request<{ user: UserView }>(`/api/auth/login`, {
+        method: 'POST',
+        body: JSON.stringify({ email, password }),
+      }),
+    logout: () => request<{ ok: boolean }>(`/api/auth/logout`, { method: 'POST' }),
+    me: () => request<UserView>(`/api/auth/me`),
+    updateProfile: (data: { display_name?: string; avatar_color?: string }) =>
+      request<UserView>(`/api/auth/me`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }),
+    changePassword: (old_password: string, new_password: string) =>
+      request<{ ok: boolean }>(`/api/auth/me/password`, {
+        method: 'POST',
+        body: JSON.stringify({ old_password, new_password }),
+      }),
+  },
+  teams: {
+    list: () => request<{ items: TeamView[]; total: number }>(`/api/teams`),
+    create: (name: string, description?: string) =>
+      request<TeamView>(`/api/teams`, {
+        method: 'POST',
+        body: JSON.stringify({ name, description }),
+      }),
+    get: (id: string) => request<TeamView>(`/api/teams/${id}`),
+    update: (id: string, data: { name?: string; description?: string }) =>
+      request<TeamView>(`/api/teams/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }),
+    delete: (id: string) => request<{ id: string; deleted: boolean }>(`/api/teams/${id}`, { method: 'DELETE' }),
+    addMember: (team_id: string, email: string, role = 'member') =>
+      request<TeamMemberView>(`/api/teams/${team_id}/members`, {
+        method: 'POST',
+        body: JSON.stringify({ email, role }),
+      }),
+    updateMember: (team_id: string, user_id: string, role: string) =>
+      request<TeamMemberView>(`/api/teams/${team_id}/members/${user_id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ role }),
+      }),
+    removeMember: (team_id: string, user_id: string) =>
+      request<{ team_id: string; user_id: string; removed: boolean }>(
+        `/api/teams/${team_id}/members/${user_id}`,
+        { method: 'DELETE' },
+      ),
+  },
   startConversation: (project_id?: string) =>
     request<StartResponse>('/api/conversation/start', {
       method: 'POST',
@@ -289,6 +375,7 @@ export const api = {
     form.append('file', file, name);
     const res = await fetch(`${API_BASE}/api/conversation/${conversation_id}/upload`, {
       method: 'POST',
+      credentials: 'include',
       body: form,
     });
     if (!res.ok) {

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { UserMenu } from './UserMenu';
 
 const links = [
   { href: '/', label: '新建需求' },
@@ -77,9 +78,7 @@ export function TopNav() {
             </svg>
           )}
         </button>
-        <div className="w-7 h-7 rounded-full flex items-center justify-center text-[12px] font-medium" style={{ background: 'var(--bg-surface-3)', color: 'var(--text-secondary)' }}>
-          U
-        </div>
+        <UserMenu />
       </div>
     </nav>
   );

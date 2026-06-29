@@ -64,6 +64,57 @@ def run_migrations(engine: Engine) -> None:
             conn.execute(text("ALTER TABLE prds ADD COLUMN spec_version VARCHAR(20)"))
             conn.execute(text("ALTER TABLE prds ADD COLUMN spec_updated_at DATETIME"))
 
+        if _table_exists(engine, "projects") and not _column_exists(engine, "projects", "team_id"):
+            logger.info("migration: add projects.team_id")
+            conn.execute(text("ALTER TABLE projects ADD COLUMN team_id VARCHAR"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_projects_team_id ON projects(team_id)"))
+
+    _migrate_anonymous_data(engine)
+
+
+def _migrate_anonymous_data(engine) -> None:
+    """把 user_id='anonymous' 的旧数据迁移到默认账号。
+
+    启动时检查：如果用户表为空且有匿名数据,自动创建一个 default@local 账号并归并。
+    """
+    from sqlalchemy.orm import Session
+    from app.core.security import hash_password
+    from app.db import models
+
+    with Session(engine) as s:
+        has_user = s.query(models.User).count() > 0
+        if has_user:
+            return
+
+        anon_count = s.query(models.Conversation).filter_by(user_id="anonymous").count()
+        if anon_count == 0:
+            return
+
+        existing_default = s.query(models.User).filter_by(email="default@local").first()
+        if existing_default:
+            default = existing_default
+        else:
+            default = models.User(
+                email="default@local",
+                password_hash=hash_password("default-migrate-password-change-me"),
+                display_name="Default Account (迁移数据)",
+                avatar_color="#5E6AD2",
+            )
+            s.add(default)
+            s.flush()
+
+        s.query(models.Conversation).filter_by(user_id="anonymous").update(
+            {"user_id": default.id}
+        )
+        s.query(models.Project).filter_by(user_id="anonymous").update(
+            {"user_id": default.id}
+        )
+        s.commit()
+        logger.warning(
+            "migration: %d 条匿名对话/项目已归并到 default@local, 请尽快登录并修改密码",
+            anon_count,
+        )
+
     db = SessionLocal()
     try:
         default_project = db.query(Project).filter(Project.name == "默认项目").first()

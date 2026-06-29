@@ -15,6 +15,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.core.security import get_current_user
 from app.core.state_machine import (
     COMPLETION_THRESHOLD,
     MAX_TO_CONFIRM,
@@ -24,6 +25,11 @@ from app.core.state_machine import (
 )
 from app.db import models
 from app.db.session import get_db
+from app.services.access import (
+    assert_conversation_access,
+    assert_project_access,
+    assert_requirement_access,
+)
 from app.schemas.models import (
     ConfirmRequest,
     ConfirmResponse,
@@ -243,14 +249,19 @@ def _get_latest_doc(conv: models.Conversation) -> dict:
 
 
 @router.post("/conversation/start", response_model=StartConversationResponse)
-async def start_conversation(req: StartConversationRequest, db: Session = Depends(get_db)) -> dict:
+async def start_conversation(
+    req: StartConversationRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> dict:
     project_id: Optional[str] = None
     if req.project_id:
         p = db.get(models.Project, req.project_id)
         if not p:
             raise HTTPException(status_code=404, detail="Project not found")
+        assert_project_access(current_user, p, db)
         project_id = p.id
-    conv = models.Conversation(user_id=req.user_id, project_id=project_id)
+    conv = models.Conversation(user_id=current_user.id, project_id=project_id)
     db.add(conv)
     db.commit()
     db.refresh(conv)
@@ -263,15 +274,25 @@ async def start_conversation(req: StartConversationRequest, db: Session = Depend
 
 
 @router.get("/conversation/{conversation_id}", response_model=ConversationView)
-async def get_conversation(conversation_id: str, db: Session = Depends(get_db)) -> dict:
+async def get_conversation(
+    conversation_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> dict:
     conv = db.get(models.Conversation, conversation_id)
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
+    assert_conversation_access(current_user, conv, db)
     return _serialize_conversation(db, conv)
 
 
 @router.post("/conversation/message/stream")
-async def post_message_stream(req: MessageRequest, request: Request, db: Session = Depends(get_db)):
+async def post_message_stream(
+    req: MessageRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
     """SSE 流式版本（单端点 + 内部流，并行 LLM 调用）：
     state=answering → 并行启动 scene_identification + stream_question_text → 流式开场白 →
     questions event → state=asking → done。
@@ -289,6 +310,7 @@ async def post_message_stream(req: MessageRequest, request: Request, db: Session
     conv = db.get(models.Conversation, req.conversation_id)
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
+    assert_conversation_access(current_user, conv, db)
 
     sm = StateMachine(state=conv.state, round=conv.current_round, completion=conv.completion)
     if sm.state not in (ConversationState.IDLE, ConversationState.SCENE_IDENTIFYING):
@@ -546,7 +568,12 @@ async def _stream_with_timeout(gen, timeout_s: float):
 
 
 @router.post("/conversation/respond/stream")
-async def post_respond_stream(req: RespondRequest, request: Request, db: Session = Depends(get_db)):
+async def post_respond_stream(
+    req: RespondRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
     """SSE 流式版本（单端点 + 内部流）：
     state=answering → 直接流式 LLM token（反问式总结 + 整合 JSON，1 次 LLM 调用）
     → state=asking → done。
@@ -562,6 +589,7 @@ async def post_respond_stream(req: RespondRequest, request: Request, db: Session
     conv = db.get(models.Conversation, req.conversation_id)
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
+    assert_conversation_access(current_user, conv, db)
 
     sm = StateMachine(state=conv.state, round=conv.current_round, completion=conv.completion)
     if sm.state not in (ConversationState.ASKING, ConversationState.INTEGRATING):
@@ -845,10 +873,15 @@ async def post_respond_stream(req: RespondRequest, request: Request, db: Session
 
 
 @router.post("/conversation/confirm", response_model=ConfirmResponse)
-async def post_confirm(req: ConfirmRequest, db: Session = Depends(get_db)) -> dict:
+async def post_confirm(
+    req: ConfirmRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> dict:
     conv = db.get(models.Conversation, req.conversation_id)
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
+    assert_conversation_access(current_user, conv, db)
 
     sm = StateMachine(state=conv.state, round=conv.current_round, completion=conv.completion)
     if sm.state != ConversationState.CONFIRMING:
@@ -903,7 +936,11 @@ async def post_confirm(req: ConfirmRequest, db: Session = Depends(get_db)) -> di
 
 
 @router.post("/conversation/finish")
-async def post_finish(req: ConfirmRequest, db: Session = Depends(get_db)) -> dict:
+async def post_finish(
+    req: ConfirmRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> dict:
     """业务人员主动结束对话：把 state 显式设为 confirming。
 
     对应 UI 上的"我聊够了"按钮。状态机不再因 completion >= 80 自动跳 confirming。
@@ -911,6 +948,7 @@ async def post_finish(req: ConfirmRequest, db: Session = Depends(get_db)) -> dic
     conv = db.get(models.Conversation, req.conversation_id)
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
+    assert_conversation_access(current_user, conv, db)
 
     sm = StateMachine(
         state=conv.state, round=conv.current_round, completion=conv.completion
@@ -942,10 +980,15 @@ async def post_finish(req: ConfirmRequest, db: Session = Depends(get_db)) -> dic
 
 
 @router.post("/prd/generate", response_model=PrdResponse)
-async def post_generate_prd(req: ConfirmRequest, db: Session = Depends(get_db)) -> dict:
+async def post_generate_prd(
+    req: ConfirmRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> dict:
     conv = db.get(models.Conversation, req.conversation_id)
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
+    assert_conversation_access(current_user, conv, db)
 
     requirement = (
         db.query(models.Requirement).filter_by(conversation_id=conv.id).first()
@@ -989,10 +1032,17 @@ async def post_generate_prd(req: ConfirmRequest, db: Session = Depends(get_db)) 
 
 
 @router.post("/prd/{prd_id}/spec", response_model=SpecResponse)
-async def generate_spec(prd_id: str, db: Session = Depends(get_db)) -> dict:
+async def generate_spec(
+    prd_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> dict:
     prd = db.get(models.Prd, prd_id)
     if not prd:
         raise HTTPException(status_code=404, detail="PRD not found")
+    requirement = db.get(models.Requirement, prd.requirement_id)
+    if requirement:
+        assert_requirement_access(current_user, requirement, db)
 
     if prd.spec_content:
         return SpecResponse(
@@ -1023,10 +1073,17 @@ async def generate_spec(prd_id: str, db: Session = Depends(get_db)) -> dict:
 
 
 @router.delete("/prd/{prd_id}/spec")
-async def delete_spec(prd_id: str, db: Session = Depends(get_db)) -> dict:
+async def delete_spec(
+    prd_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> dict:
     prd = db.get(models.Prd, prd_id)
     if not prd:
         raise HTTPException(status_code=404, detail="PRD not found")
+    requirement = db.get(models.Requirement, prd.requirement_id)
+    if requirement:
+        assert_requirement_access(current_user, requirement, db)
     prd.spec_content = None
     prd.spec_version = None
     prd.spec_updated_at = None
@@ -1035,10 +1092,17 @@ async def delete_spec(prd_id: str, db: Session = Depends(get_db)) -> dict:
 
 
 @router.post("/prd/export", response_model=ExportResponse)
-async def post_export_prd(req: ExportRequest, db: Session = Depends(get_db)) -> dict:
+async def post_export_prd(
+    req: ExportRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> dict:
     prd = db.get(models.Prd, req.prd_id)
     if not prd:
         raise HTTPException(status_code=404, detail="PRD not found")
+    requirement = db.get(models.Requirement, prd.requirement_id)
+    if requirement:
+        assert_requirement_access(current_user, requirement, db)
 
     title_match = re.search(r"# PRD[：:]\s*(.+)", prd.content)
     title = (title_match.group(1).strip() if title_match else "未命名需求")
@@ -1059,8 +1123,28 @@ async def list_requirements(
     status: Optional[str] = None,
     q: Optional[str] = None,
     db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
 ) -> dict:
+    team_ids = [
+        m.team_id
+        for m in db.query(models.TeamMember).filter_by(user_id=current_user.id).all()
+    ] + [
+        t.id
+        for t in db.query(models.Team).filter_by(owner_id=current_user.id).all()
+    ]
+    team_ids = list(set(team_ids))
+
     query = db.query(models.Requirement)
+    if team_ids:
+        query = query.outerjoin(models.Project).outerjoin(models.Conversation)
+        query = query.filter(
+            (models.Conversation.user_id == current_user.id)
+            | (models.Project.team_id.in_(team_ids))
+        )
+    else:
+        query = query.join(models.Conversation).filter(
+            models.Conversation.user_id == current_user.id
+        )
     if status:
         query = query.filter(models.Requirement.status == status)
 
@@ -1092,10 +1176,15 @@ async def list_requirements(
 
 
 @router.get("/requirement/{requirement_id}")
-async def get_requirement(requirement_id: str, db: Session = Depends(get_db)) -> dict:
+async def get_requirement(
+    requirement_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> dict:
     req = db.get(models.Requirement, requirement_id)
     if not req:
         raise HTTPException(status_code=404, detail="Requirement not found")
+    assert_requirement_access(current_user, req, db)
 
     prds = [
         {
@@ -1124,10 +1213,15 @@ async def get_requirement(requirement_id: str, db: Session = Depends(get_db)) ->
 
 
 @router.post("/requirement/{requirement_id}/archive")
-async def archive_requirement(requirement_id: str, db: Session = Depends(get_db)) -> dict:
+async def archive_requirement(
+    requirement_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> dict:
     req = db.get(models.Requirement, requirement_id)
     if not req:
         raise HTTPException(status_code=404, detail="Requirement not found")
+    assert_requirement_access(current_user, req, db)
     if req.status == "archived":
         return {"id": req.id, "status": req.status, "updated_at": req.updated_at.isoformat()}
     req.status = "archived"
@@ -1138,10 +1232,15 @@ async def archive_requirement(requirement_id: str, db: Session = Depends(get_db)
 
 
 @router.post("/requirement/{requirement_id}/unarchive")
-async def unarchive_requirement(requirement_id: str, db: Session = Depends(get_db)) -> dict:
+async def unarchive_requirement(
+    requirement_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> dict:
     req = db.get(models.Requirement, requirement_id)
     if not req:
         raise HTTPException(status_code=404, detail="Requirement not found")
+    assert_requirement_access(current_user, req, db)
     if req.status == "archived":
         if req.prds:
             req.status = "prd_generated"
@@ -1154,10 +1253,15 @@ async def unarchive_requirement(requirement_id: str, db: Session = Depends(get_d
 
 
 @router.delete("/requirement/{requirement_id}")
-async def delete_requirement(requirement_id: str, db: Session = Depends(get_db)) -> dict:
+async def delete_requirement(
+    requirement_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> dict:
     req = db.get(models.Requirement, requirement_id)
     if not req:
         raise HTTPException(status_code=404, detail="Requirement not found")
+    assert_requirement_access(current_user, req, db)
     prd_count = len(req.prds)
     db.delete(req)
     db.commit()
@@ -1170,8 +1274,29 @@ async def health() -> dict:
 
 
 @router.get("/projects", response_model=list[ProjectResponse])
-async def list_projects(db: Session = Depends(get_db)) -> list[dict]:
-    projects = db.query(models.Project).order_by(models.Project.updated_at.desc()).all()
+async def list_projects(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> list[dict]:
+    team_ids = [
+        t.id
+        for t in db.query(models.Team).filter(
+            (models.Team.owner_id == current_user.id)
+            | models.Team.id.in_(
+                db.query(models.TeamMember.team_id).filter_by(user_id=current_user.id)
+            )
+        ).all()
+    ]
+
+    projects = (
+        db.query(models.Project)
+        .filter(
+            (models.Project.user_id == current_user.id)
+            | (models.Project.team_id.in_(team_ids) if team_ids else False)
+        )
+        .order_by(models.Project.updated_at.desc())
+        .all()
+    )
     out: list[dict] = []
     for p in projects:
         req_count = len(p.requirements)
@@ -1191,11 +1316,33 @@ async def list_projects(db: Session = Depends(get_db)) -> list[dict]:
 
 
 @router.post("/projects", response_model=ProjectResponse)
-async def create_project(req: ProjectCreateRequest, db: Session = Depends(get_db)) -> dict:
+async def create_project(
+    req: ProjectCreateRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> dict:
     name = (req.name or "").strip()
     if not name:
         raise HTTPException(status_code=400, detail="项目名不能为空")
-    p = models.Project(name=name, description=(req.description or "").strip() or None)
+    team_id = None
+    if req.team_id:
+        team = db.get(models.Team, req.team_id)
+        if not team:
+            raise HTTPException(status_code=404, detail="Team not found")
+        m = (
+            db.query(models.TeamMember)
+            .filter_by(team_id=team.id, user_id=current_user.id)
+            .first()
+        )
+        if team.owner_id != current_user.id and not m:
+            raise HTTPException(status_code=403, detail="你不是该团队成员")
+        team_id = team.id
+    p = models.Project(
+        name=name,
+        description=(req.description or "").strip() or None,
+        user_id=current_user.id,
+        team_id=team_id,
+    )
     db.add(p)
     db.commit()
     db.refresh(p)
@@ -1211,10 +1358,15 @@ async def create_project(req: ProjectCreateRequest, db: Session = Depends(get_db
 
 
 @router.get("/project/{project_id}", response_model=ProjectDetailResponse)
-async def get_project(project_id: str, db: Session = Depends(get_db)) -> dict:
+async def get_project(
+    project_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> dict:
     p = db.get(models.Project, project_id)
     if not p:
         raise HTTPException(status_code=404, detail="Project not found")
+    assert_project_access(current_user, p, db)
     req_items: list[dict] = []
     prd_count = 0
     req_conv_ids = {r.conversation_id for r in p.requirements}
@@ -1288,10 +1440,16 @@ async def get_project(project_id: str, db: Session = Depends(get_db)) -> dict:
 
 
 @router.patch("/project/{project_id}", response_model=ProjectResponse)
-async def update_project(project_id: str, req: ProjectUpdateRequest, db: Session = Depends(get_db)) -> dict:
+async def update_project(
+    project_id: str,
+    req: ProjectUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> dict:
     p = db.get(models.Project, project_id)
     if not p:
         raise HTTPException(status_code=404, detail="Project not found")
+    assert_project_access(current_user, p, db, write=True)
     if req.name is not None:
         name = req.name.strip()
         if not name:
@@ -1314,10 +1472,17 @@ async def update_project(project_id: str, req: ProjectUpdateRequest, db: Session
 
 
 @router.delete("/project/{project_id}")
-async def delete_project(project_id: str, db: Session = Depends(get_db)) -> dict:
+async def delete_project(
+    project_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> dict:
     p = db.get(models.Project, project_id)
     if not p:
         raise HTTPException(status_code=404, detail="Project not found")
+    assert_project_access(current_user, p, db, write=True)
+    if p.user_id != current_user.id and (not p.team_id or p.team.owner_id != current_user.id):
+        raise HTTPException(status_code=403, detail="仅项目所有者或团队 owner 可删除项目")
     if p.requirements:
         raise HTTPException(status_code=400, detail="该项目下还有需求，无法删除")
     db.delete(p)
@@ -1327,15 +1492,20 @@ async def delete_project(project_id: str, db: Session = Depends(get_db)) -> dict
 
 @router.post("/requirement/{requirement_id}/project")
 async def assign_requirement_to_project(
-    requirement_id: str, req: ProjectAssignRequest, db: Session = Depends(get_db)
+    requirement_id: str,
+    req: ProjectAssignRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
 ) -> dict:
     r = db.get(models.Requirement, requirement_id)
     if not r:
         raise HTTPException(status_code=404, detail="Requirement not found")
+    assert_requirement_access(current_user, r, db)
     if req.project_id:
         p = db.get(models.Project, req.project_id)
         if not p:
             raise HTTPException(status_code=404, detail="Project not found")
+        assert_project_access(current_user, p, db, write=True)
         r.project_id = p.id
     else:
         r.project_id = None
@@ -1362,10 +1532,12 @@ async def patch_conversation_doc(
     conversation_id: str,
     req: DocEditRequest,
     db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
 ) -> dict:
     conv = db.get(models.Conversation, conversation_id)
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
+    assert_conversation_access(current_user, conv, db)
 
     latest_version = (
         db.query(models.DocVersion)
@@ -1421,10 +1593,12 @@ async def post_upload(
     conversation_id: str,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
 ) -> dict:
     conv = db.get(models.Conversation, conversation_id)
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
+    assert_conversation_access(current_user, conv, db)
 
     content_type = (file.content_type or "").lower()
     if content_type not in ALLOWED_MIME_TYPES:
@@ -1482,10 +1656,18 @@ async def post_upload(
 
 
 @router.patch("/prd/{prd_id}", response_model=PrdEditResponse)
-async def patch_prd(prd_id: str, req: PrdEditRequest, db: Session = Depends(get_db)) -> dict:
+async def patch_prd(
+    prd_id: str,
+    req: PrdEditRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> dict:
     prd = db.get(models.Prd, prd_id)
     if not prd:
         raise HTTPException(status_code=404, detail="PRD not found")
+    requirement = db.get(models.Requirement, prd.requirement_id)
+    if requirement:
+        assert_requirement_access(current_user, requirement, db)
 
     if not req.content or not req.content.strip():
         raise HTTPException(status_code=422, detail="content 不能为空")
@@ -1506,11 +1688,17 @@ async def patch_prd(prd_id: str, req: PrdEditRequest, db: Session = Depends(get_
 
 @router.patch("/prd/{prd_id}/acceptance", response_model=PrdAcceptanceResponse)
 async def patch_prd_acceptance(
-    prd_id: str, req: PrdAcceptanceRequest, db: Session = Depends(get_db)
+    prd_id: str,
+    req: PrdAcceptanceRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
 ) -> dict:
     prd = db.get(models.Prd, prd_id)
     if not prd:
         raise HTTPException(status_code=404, detail="PRD not found")
+    requirement = db.get(models.Requirement, prd.requirement_id)
+    if requirement:
+        assert_requirement_access(current_user, requirement, db)
 
     current = dict(prd.acceptance_state or {})
     for k, v in req.checks.items():

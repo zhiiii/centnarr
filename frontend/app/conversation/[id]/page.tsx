@@ -331,9 +331,36 @@ export default function ConversationPage({ params }: { params: Promise<{ id: str
     }
   };
 
-  const retryLast = () => {
+  const retryLast = async () => {
     const last = lastSubmitRef.current;
     if (!last) return;
+
+    setError(null);
+
+    const waitForAsking = async (): Promise<boolean> => {
+      for (let i = 0; i < 20; i++) {
+        try {
+          const fresh = await api.getConversation(id);
+          if (fresh.state === 'asking' || fresh.state === 'integrating') {
+            setConv(fresh);
+            return true;
+          }
+          if (fresh.state === 'confirming' || fresh.state === 'prd_generated') {
+            setConv(fresh);
+            return false;
+          }
+        } catch {
+        }
+        await new Promise((r) => setTimeout(r, 500));
+      }
+      return false;
+    };
+
+    const ok = await waitForAsking();
+    if (!ok) {
+      setError('对话已结束,无法重试。');
+      return;
+    }
     void runStream(last.text, last.isFirst, last.options);
   };
 

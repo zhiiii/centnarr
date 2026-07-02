@@ -13,6 +13,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+from sqlalchemy import update as sa_update
 from sqlalchemy.orm import Session
 
 from app.core.security import get_current_user
@@ -147,6 +148,28 @@ def _sse_error(message: str) -> str:
 
 def _sse_state(state: str) -> str:
     return sse.sse_state(state)
+
+
+def _rollback_conversation_state(conv_id: str, target_state: str, target_round: int) -> None:
+    """流式端点失败时把会话状态回滚到出错前的合法态。
+
+    调用方必须在改写状态前先记录 previous_state,出错/超时时调用此函数。
+    用独立 session 避免和事件生成器内的 session 冲突。
+    """
+    try:
+        from app.db.session import SessionLocal
+        with SessionLocal() as s:
+            fresh = s.get(models.Conversation, conv_id)
+            if fresh and fresh.state != target_state:
+                logger.warning(
+                    "rollback conversation %s state %s → %s (round=%d)",
+                    conv_id[:8], fresh.state, target_state, target_round,
+                )
+                fresh.state = target_state
+                fresh.current_round = target_round
+                s.commit()
+    except Exception:
+        logger.exception("rollback failed for conversation %s", conv_id[:8])
 
 
 def _sse_event(payload: dict) -> str:
@@ -319,6 +342,9 @@ async def post_message_stream(
             detail=f"Cannot post first message in state {sm.state}",
         )
 
+    previous_state = sm.state.value
+    previous_round = sm.round
+
     sm.transition("first_message")
     _save_message(
         db, conv, role="user", content=req.content, input_type=req.input_type, meta=req.meta
@@ -345,7 +371,6 @@ async def post_message_stream(
                 _save_message(
                     db, conv, role="assistant", content=refusal, meta={"intent_refusal": True},
                 )
-                from sqlalchemy import update as sa_update
                 db.execute(
                     sa_update(models.Conversation)
                     .where(models.Conversation.id == conv.id)
@@ -410,6 +435,7 @@ async def post_message_stream(
                         return
             except Exception as e:
                 logger.exception("Stream question text failed: %s", e)
+                _rollback_conversation_state(conv_id, previous_state, previous_round)
                 yield _sse_error(f"流式输出失败：{_truncate(str(e))}")
                 return
 
@@ -537,27 +563,41 @@ async def post_message_stream(
             yield _sse_done(final_payload)
         except Exception as e:
             logger.exception("event_generator crashed: %s", e)
+            _rollback_conversation_state(conv_id, previous_state, previous_round)
             yield _sse_error(f"流式端点异常：{_truncate(str(e))}")
 
     async def timeout_wrapped():
+        def _on_idle():
+            _rollback_conversation_state(conv_id, previous_state, previous_round)
         try:
-            async for chunk in _stream_with_timeout(event_generator(), STREAM_TIMEOUT_SECONDS):
+            async for chunk in _stream_with_timeout(
+                event_generator(), STREAM_TIMEOUT_SECONDS, on_timeout=_on_idle,
+            ):
                 yield chunk
         except asyncio.TimeoutError:
             logger.warning("stream timeout (%ss)", STREAM_TIMEOUT_SECONDS)
+            _rollback_conversation_state(conv_id, previous_state, previous_round)
             yield _sse_error(f"AI 想得有点久（>{STREAM_TIMEOUT_SECONDS}s），已经自动取消，点这里重试")
 
     return StreamingResponse(timeout_wrapped(), media_type="text/event-stream")
 
 
-async def _stream_with_timeout(gen, timeout_s: float):
-    """真正的流式超时：每个 chunk 单独 timeout，不 buffer 整个流。"""
+async def _stream_with_timeout(gen, timeout_s: float, on_timeout=None):
+    """真正的流式超时：每个 chunk 单独 timeout，不 buffer 整个流。
+
+    on_timeout: 触发 idle timeout 时调用的回调,用于回滚会话状态等清理。
+    """
     last_yield = asyncio.get_event_loop().time()
     try:
         async for chunk in gen:
             now = asyncio.get_event_loop().time()
             if now - last_yield > timeout_s:
                 logger.warning("stream idle timeout (%ss since last chunk)", timeout_s)
+                if on_timeout:
+                    try:
+                        on_timeout()
+                    except Exception:
+                        logger.exception("on_timeout callback failed")
                 yield _sse_error(f"AI 长时间没动静（>{timeout_s:.0f}s），已经自动取消，点这里重试")
                 return
             last_yield = now
@@ -594,6 +634,9 @@ async def post_respond_stream(
     sm = StateMachine(state=conv.state, round=conv.current_round, completion=conv.completion)
     if sm.state not in (ConversationState.ASKING, ConversationState.INTEGRATING):
         raise HTTPException(status_code=400, detail=f"Cannot respond in state {sm.state}")
+
+    previous_state = sm.state.value
+    previous_round = sm.round
 
     sm.transition("user_answered")
     _save_message(
@@ -759,6 +802,7 @@ async def post_respond_stream(
                             return
                 except Exception as e:
                     logger.exception("Stream question text failed: %s", e)
+                    _rollback_conversation_state(conv_id, previous_state, previous_round)
                     yield _sse_error(f"流式输出失败：{_truncate(str(e))}")
                     return
 
@@ -862,11 +906,16 @@ async def post_respond_stream(
             yield _sse_error(f"流式端点异常：{_truncate(str(e))}")
 
     async def timeout_wrapped():
+        def _on_idle():
+            _rollback_conversation_state(conv_id, previous_state, previous_round)
         try:
-            async for chunk in _stream_with_timeout(event_generator(), STREAM_TIMEOUT_SECONDS):
+            async for chunk in _stream_with_timeout(
+                event_generator(), STREAM_TIMEOUT_SECONDS, on_timeout=_on_idle,
+            ):
                 yield chunk
         except asyncio.TimeoutError:
             logger.warning("stream timeout (%ss)", STREAM_TIMEOUT_SECONDS)
+            _rollback_conversation_state(conv_id, previous_state, previous_round)
             yield _sse_error(f"AI 想得有点久（>{STREAM_TIMEOUT_SECONDS}s），已经自动取消，点这里重试")
 
     return StreamingResponse(timeout_wrapped(), media_type="text/event-stream")

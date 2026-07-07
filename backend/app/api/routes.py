@@ -138,6 +138,24 @@ def _derive_to_confirm(doc: dict) -> list[str]:
     return doc_path_utils.derive_to_confirm(doc)
 
 
+def _project_to_response(p, *, team_name: str | None = None, requirement_count: int = 0, prd_count: int = 0) -> dict:
+    """Project 实体 → API dict,含 team_id/team_name。
+
+    team_name 由调用方一次性查好传入,避免 N+1。
+    """
+    return ProjectResponse(
+        id=p.id,
+        name=p.name,
+        description=p.description,
+        team_id=p.team_id,
+        team_name=team_name,
+        requirement_count=requirement_count,
+        prd_count=prd_count,
+        created_at=p.created_at.isoformat() if p.created_at else "",
+        updated_at=p.updated_at.isoformat() if p.updated_at else "",
+    ).model_dump()
+
+
 def _sse_delta(content: str) -> str:
     return sse.sse_delta(content)
 
@@ -1346,20 +1364,24 @@ async def list_projects(
         .order_by(models.Project.updated_at.desc())
         .all()
     )
+
+    team_name_map: dict[str, str] = {
+        t.id: t.name for t in db.query(models.Team).filter(models.Team.id.in_(
+            {p.team_id for p in projects if p.team_id}
+        )).all()
+    } if any(p.team_id for p in projects) else {}
+
     out: list[dict] = []
     for p in projects:
         req_count = len(p.requirements)
         prd_count = sum(1 for r in p.requirements for _ in r.prds)
         out.append(
-            ProjectResponse(
-                id=p.id,
-                name=p.name,
-                description=p.description,
+            _project_to_response(
+                p,
+                team_name=team_name_map.get(p.team_id) if p.team_id else None,
                 requirement_count=req_count,
                 prd_count=prd_count,
-                created_at=p.created_at.isoformat(),
-                updated_at=p.updated_at.isoformat(),
-            ).model_dump()
+            )
         )
     return out
 
@@ -1395,15 +1417,10 @@ async def create_project(
     db.add(p)
     db.commit()
     db.refresh(p)
-    return ProjectResponse(
-        id=p.id,
-        name=p.name,
-        description=p.description,
-        requirement_count=0,
-        prd_count=0,
-        created_at=p.created_at.isoformat(),
-        updated_at=p.updated_at.isoformat(),
-    ).model_dump()
+    return _project_to_response(
+        p,
+        team_name=team.name if team_id else None,
+    )
 
 
 @router.get("/project/{project_id}", response_model=ProjectDetailResponse)
@@ -1509,15 +1526,16 @@ async def update_project(
     p.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(p)
-    return ProjectResponse(
-        id=p.id,
-        name=p.name,
-        description=p.description,
+    team_name = None
+    if p.team_id:
+        t = db.get(models.Team, p.team_id)
+        team_name = t.name if t else None
+    return _project_to_response(
+        p,
+        team_name=team_name,
         requirement_count=len(p.requirements),
         prd_count=sum(1 for r in p.requirements for _ in r.prds),
-        created_at=p.created_at.isoformat(),
-        updated_at=p.updated_at.isoformat(),
-    ).model_dump()
+    )
 
 
 @router.delete("/project/{project_id}")

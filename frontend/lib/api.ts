@@ -467,17 +467,22 @@ export const api = {
         id: string;
         name: string;
         description: string | null;
+        team_id: string | null;
+        team_name: string | null;
         requirement_count: number;
         prd_count: number;
         created_at: string;
         updated_at: string;
       }>
     >('/api/projects'),
-  createProject: (name: string, description?: string) =>
-    request<{ id: string; name: string }>('/api/projects', {
-      method: 'POST',
-      body: JSON.stringify({ name, description }),
-    }),
+  createProject: (name: string, description?: string, team_id?: string | null) =>
+    request<{ id: string; name: string; team_id: string | null; team_name: string | null }>(
+      '/api/projects',
+      {
+        method: 'POST',
+        body: JSON.stringify({ name, description, team_id: team_id || null }),
+      },
+    ),
   getProject: (id: string) =>
     request<{
       id: string;

@@ -3,34 +3,49 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { api } from '@/lib/api';
+import { api, TeamView } from '@/lib/api';
 
 interface ProjectListItem {
   id: string;
   name: string;
   description: string | null;
+  team_id: string | null;
+  team_name: string | null;
   requirement_count: number;
   prd_count: number;
   created_at: string;
   updated_at: string;
 }
 
+interface ProjectGroup {
+  key: string;
+  title: string;
+  subtitle: string;
+  isPersonal: boolean;
+  projects: ProjectListItem[];
+}
+
 export default function ProjectsPage() {
   const router = useRouter();
   const [items, setItems] = useState<ProjectListItem[]>([]);
+  const [teams, setTeams] = useState<TeamView[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState('');
   const [newDesc, setNewDesc] = useState('');
+  const [newTeam, setNewTeam] = useState<string>('');
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = () => {
+  const load = async () => {
     setLoading(true);
-    api
-      .listProjects()
-      .then(setItems)
-      .finally(() => setLoading(false));
+    try {
+      const [list, t] = await Promise.all([api.listProjects(), api.teams.list()]);
+      setItems(list);
+      setTeams(t.items);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -46,10 +61,15 @@ export default function ProjectsPage() {
     setCreating(true);
     setError(null);
     try {
-      const p = await api.createProject(name, newDesc.trim() || undefined);
+      const p = await api.createProject(
+        name,
+        newDesc.trim() || undefined,
+        newTeam || null,
+      );
       setShowCreate(false);
       setNewName('');
       setNewDesc('');
+      setNewTeam('');
       router.push(`/project/${p.id}`);
     } catch (e) {
       setError((e as Error).message || '创建失败');
@@ -57,6 +77,41 @@ export default function ProjectsPage() {
       setCreating(false);
     }
   };
+
+  const groups: ProjectGroup[] = (() => {
+    const personal: ProjectListItem[] = [];
+    const byTeam = new Map<string, { team: TeamView; items: ProjectListItem[] }>();
+    for (const p of items) {
+      if (!p.team_id) {
+        personal.push(p);
+        continue;
+      }
+      const team = teams.find((t) => t.id === p.team_id);
+      if (!team) {
+        personal.push(p);
+        continue;
+      }
+      if (!byTeam.has(team.id)) byTeam.set(team.id, { team, items: [] });
+      byTeam.get(team.id)!.items.push(p);
+    }
+    const teamGroups: ProjectGroup[] = Array.from(byTeam.values()).map(({ team, items }) => ({
+      key: team.id,
+      title: team.name,
+      subtitle: `@${team.slug} · ${team.member_count} 成员`,
+      isPersonal: false,
+      projects: items,
+    }));
+    return [
+      ...teamGroups.sort((a, b) => a.title.localeCompare(b.title, 'zh')),
+      {
+        key: 'personal',
+        title: '个人项目',
+        subtitle: '仅你可见,不在任何团队空间里',
+        isPersonal: true,
+        projects: personal,
+      },
+    ].filter((g) => g.projects.length > 0);
+  })();
 
   const totalReqs = items.reduce((s, p) => s + p.requirement_count, 0);
   const totalPrds = items.reduce((s, p) => s + p.prd_count, 0);
@@ -76,7 +131,6 @@ export default function ProjectsPage() {
               所有项目
             </h1>
             <div className="text-[12.5px] mt-2" style={{ color: 'var(--text-secondary)' }}>
-              一个项目对应一组相关需求 ·{' '}
               <span className="gold-text" style={{ fontWeight: 500 }}>
                 {items.length}
               </span>{' '}
@@ -89,6 +143,18 @@ export default function ProjectsPage() {
                 {totalPrds}
               </span>{' '}
               个 PRD
+              {teams.length > 0 && (
+                <>
+                  {' · '}
+                  <Link
+                    href="/teams"
+                    className="hover:underline"
+                    style={{ color: 'var(--accent)' }}
+                  >
+                    {teams.length} 个团队 →
+                  </Link>
+                </>
+              )}
             </div>
           </div>
           <button onClick={() => setShowCreate((v) => !v)} className="btn btn-primary">
@@ -104,7 +170,7 @@ export default function ProjectsPage() {
             <div className="text-[13px] font-medium mb-3 gold-text" style={{ fontWeight: 600 }}>
               新建项目
             </div>
-            <div className="space-y-2">
+            <div className="space-y-2.5">
               <input
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
@@ -112,6 +178,9 @@ export default function ProjectsPage() {
                 className="input"
                 maxLength={120}
                 autoFocus
+                onKeyDown={(e) => {
+                  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') handleCreate();
+                }}
               />
               <textarea
                 value={newDesc}
@@ -120,6 +189,29 @@ export default function ProjectsPage() {
                 rows={2}
                 className="input resize-none"
               />
+              <div>
+                <label className="text-[10.5px] uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-muted)' }}>
+                  归属空间（决定谁能看/改这个项目）
+                </label>
+                <select
+                  value={newTeam}
+                  onChange={(e) => setNewTeam(e.target.value)}
+                  className="input"
+                  style={{ cursor: 'pointer' }}
+                >
+                  <option value="">个人项目（仅我自己）</option>
+                  {teams.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}（@{t.slug} · {t.member_count} 成员）
+                    </option>
+                  ))}
+                </select>
+                {newTeam && (
+                  <div className="text-[11px] mt-1.5" style={{ color: 'var(--text-muted)' }}>
+                    创建后项目对该团队所有成员可见,{`{member/admin/owner}`} 可编辑
+                  </div>
+                )}
+              </div>
               {error && (
                 <div className="text-[12px]" style={{ color: 'var(--destructive)' }}>
                   {error}
@@ -129,7 +221,11 @@ export default function ProjectsPage() {
                 <button onClick={() => setShowCreate(false)} className="btn btn-ghost">
                   取消
                 </button>
-                <button onClick={handleCreate} disabled={creating} className="btn btn-primary">
+                <button
+                  onClick={handleCreate}
+                  disabled={creating || !newName.trim()}
+                  className="btn btn-primary"
+                >
                   {creating ? '创建中…' : '创建'}
                 </button>
               </div>
@@ -158,12 +254,38 @@ export default function ProjectsPage() {
             </button>
           </div>
         ) : (
-          <div
-            className="grid gap-4"
-            style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))' }}
-          >
-            {items.map((p) => (
-              <ProjectCard key={p.id} project={p} />
+          <div className="space-y-8">
+            {groups.map((g) => (
+              <section key={g.key}>
+                <header className="flex items-end justify-between mb-3 gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h2 className="font-display text-[16px] font-semibold">{g.title}</h2>
+                      <span
+                        className="text-[10.5px] px-2 py-0.5 rounded mono"
+                        style={{
+                          background: g.isPersonal ? 'var(--bg-surface-2)' : 'rgba(94,106,210,0.16)',
+                          color: g.isPersonal ? 'var(--text-muted)' : 'var(--accent)',
+                          fontWeight: 600,
+                        }}
+                      >
+                        {g.projects.length}
+                      </span>
+                    </div>
+                    <div className="text-[11.5px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                      {g.subtitle}
+                    </div>
+                  </div>
+                </header>
+                <div
+                  className="grid gap-4"
+                  style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))' }}
+                >
+                  {g.projects.map((p) => (
+                    <ProjectCard key={p.id} project={p} isPersonal={g.isPersonal} />
+                  ))}
+                </div>
+              </section>
             ))}
           </div>
         )}
@@ -172,7 +294,13 @@ export default function ProjectsPage() {
   );
 }
 
-function ProjectCard({ project }: { project: ProjectListItem }) {
+function ProjectCard({
+  project,
+  isPersonal,
+}: {
+  project: ProjectListItem;
+  isPersonal: boolean;
+}) {
   const monogram = (project.name || '?').trim().charAt(0).toUpperCase() || '◇';
   return (
     <Link
@@ -184,9 +312,22 @@ function ProjectCard({ project }: { project: ProjectListItem }) {
       <div className="relative flex items-start gap-3 mb-3">
         <div className="lux-monogram">{monogram}</div>
         <div className="flex-1 min-w-0">
-          <div className="font-display font-semibold text-[15px] truncate">{project.name}</div>
+          <div className="flex items-center gap-2 mb-0.5">
+            <div className="font-display font-semibold text-[15px] truncate flex-1">
+              {project.name}
+            </div>
+          </div>
+          <div className="text-[10.5px] mono" style={{ color: 'var(--text-muted)' }}>
+            {isPersonal ? (
+              <>个人空间</>
+            ) : project.team_name ? (
+              <>@{project.team_name}</>
+            ) : (
+              <>团队项目</>
+            )}
+          </div>
           <div
-            className="text-[11.5px] mt-1 leading-[1.55] line-clamp-2"
+            className="text-[11.5px] mt-1.5 leading-[1.55] line-clamp-2"
             style={{ color: 'var(--text-muted)', minHeight: 32 }}
           >
             {project.description || '（无描述）'}

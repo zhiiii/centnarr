@@ -200,6 +200,8 @@ class ProjectResponse(BaseModel):
     id: str
     name: str
     description: Optional[str] = None
+    team_id: Optional[str] = None
+    team_name: Optional[str] = None
     requirement_count: int = 0
     prd_count: int = 0
     created_at: str

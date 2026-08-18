@@ -374,6 +374,12 @@ async def post_message_stream(
     conv_id = conv.id
 
     async def event_generator():
+        _rolled_back = False
+        def _final_rollback():
+            nonlocal _rolled_back
+            if not _rolled_back:
+                _rolled_back = True
+                _rollback_conversation_state(conv_id, previous_state, previous_round)
         try:
             from app.services.intent_check import check_relevance, build_refusal_message
 
@@ -583,6 +589,8 @@ async def post_message_stream(
             logger.exception("event_generator crashed: %s", e)
             _rollback_conversation_state(conv_id, previous_state, previous_round)
             yield _sse_error(f"流式端点异常：{_truncate(str(e))}")
+        finally:
+            _final_rollback()
 
     async def timeout_wrapped():
         def _on_idle():
@@ -596,6 +604,14 @@ async def post_message_stream(
             logger.warning("stream timeout (%ss)", STREAM_TIMEOUT_SECONDS)
             _rollback_conversation_state(conv_id, previous_state, previous_round)
             yield _sse_error(f"AI 想得有点久（>{STREAM_TIMEOUT_SECONDS}s），已经自动取消，点这里重试")
+        except asyncio.CancelledError:
+            logger.info("stream cancelled by client")
+            _rollback_conversation_state(conv_id, previous_state, previous_round)
+            raise
+        except asyncio.CancelledError:
+            logger.info("stream cancelled by client")
+            _rollback_conversation_state(conv_id, previous_state, previous_round)
+            raise
 
     return StreamingResponse(timeout_wrapped(), media_type="text/event-stream")
 
@@ -687,6 +703,12 @@ async def post_respond_stream(
     conv_id = conv.id
 
     async def event_generator():
+        _rolled_back = False
+        def _final_rollback():
+            nonlocal _rolled_back
+            if not _rolled_back:
+                _rolled_back = True
+                _rollback_conversation_state(conv_id, previous_state, previous_round)
         try:
             from app.services.intent_check import check_relevance, build_refusal_message
 
@@ -922,6 +944,8 @@ async def post_respond_stream(
         except Exception as e:
             logger.exception("event_generator crashed: %s", e)
             yield _sse_error(f"流式端点异常：{_truncate(str(e))}")
+        finally:
+            _final_rollback()
 
     async def timeout_wrapped():
         def _on_idle():

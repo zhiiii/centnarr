@@ -128,6 +128,36 @@ def test_rollback_on_stream_timeout(client, monkeypatch):
     assert _state(conv_id) == "asking", f"超时后状态应回滚到 asking,实际 {_state(conv_id)}"
 
 
+def test_rollback_on_client_cancel(client, monkeypatch):
+    """客户端 abort (CancelledError) 时必须回滚状态。
+
+    之前 idle timeout 修了,但前端 abort (controller.abort) 走 asyncio.CancelledError,
+    一直没被 rollback 捕获 → state 卡 answering 锁死。
+    """
+    _register(client)
+    conv_id = _create_asking_conversation(client)
+
+    from app.api import routes as routes_mod
+
+    _patch_safe_llm(monkeypatch, routes_mod)
+
+    async def hang_q(*a, **k):
+        import asyncio
+        await asyncio.sleep(30)
+        if False:
+            yield {}
+
+    monkeypatch.setattr(routes_mod.ai_engine, "stream_question_text", hang_q)
+
+    r = client.post(
+        "/api/conversation/respond/stream",
+        json={"conversation_id": conv_id, "content": "客户端会取消这条"},
+    )
+    body = r.text
+    assert "error" in body.lower() or r.status_code in (200, 500), f"unexpected: {body[:200]}"
+    assert _state(conv_id) == "asking", f"客户端 abort 后状态应回滚到 asking, 实际 {_state(conv_id)}"
+
+
 def test_rollback_on_second_respond_after_error(client, monkeypatch):
     """回滚后,用户可以再发一条新消息而不被 400 拒绝。"""
     _register(client)

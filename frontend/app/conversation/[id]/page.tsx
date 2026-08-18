@@ -12,7 +12,7 @@ import { sanitizeAiText } from '@/lib/ai_text';
 import { useVoiceInput } from '@/hooks/useVoiceInput';
 import { useTypewriter } from '@/hooks/useTypewriter';
 
-const STREAM_TIMEOUT_MS = 180_000;
+const STREAM_TIMEOUT_MS = 300_000;
 
 function isNetworkError(e: unknown): boolean {
   if (!e) return false;

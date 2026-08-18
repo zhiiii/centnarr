@@ -27,3 +27,15 @@ node_modules/
 
 .trae/
 .claude/
+
+# Local SQLite DBs
+*.db
+*.sqlite
+*.sqlite3
+
+# Temp notes / stray workspace files
+测试文档
+测试文档.md
+测试脚本
+*.tmp
+/tmp/

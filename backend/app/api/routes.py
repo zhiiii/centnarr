@@ -375,8 +375,11 @@ async def post_message_stream(
 
     async def event_generator():
         _rolled_back = False
+        _committed = [False]
         def _final_rollback():
             nonlocal _rolled_back
+            if _committed[0]:
+                return
             if not _rolled_back:
                 _rolled_back = True
                 _rollback_conversation_state(conv_id, previous_state, previous_round)
@@ -573,6 +576,7 @@ async def post_message_stream(
                         meta=_ai_message_meta(qg.get("questions", []), qg.get("emotional_care")),
                     )
                     fresh_db.commit()
+                    _committed[0] = True
 
             final_payload = {
                 "state": sm.state.value,
@@ -585,6 +589,7 @@ async def post_message_stream(
             }
 
             yield _sse_done(final_payload)
+            _rolled_back = True
         except Exception as e:
             logger.exception("event_generator crashed: %s", e)
             _rollback_conversation_state(conv_id, previous_state, previous_round)
@@ -704,8 +709,11 @@ async def post_respond_stream(
 
     async def event_generator():
         _rolled_back = False
+        _committed = [False]
         def _final_rollback():
             nonlocal _rolled_back
+            if _committed[0]:
+                return
             if not _rolled_back:
                 _rolled_back = True
                 _rollback_conversation_state(conv_id, previous_state, previous_round)
@@ -926,6 +934,7 @@ async def post_respond_stream(
                         meta=_ai_message_meta(qg.get("questions", []), qg.get("emotional_care")),
                     )
                     fresh_db.commit()
+                    _committed[0] = True
 
             final_payload = {
                 "state": sm.state.value,
